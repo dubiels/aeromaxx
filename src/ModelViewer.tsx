@@ -7,24 +7,23 @@ import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js'
 // ─── CFD shaders ─────────────────────────────────────────────────────────────
 
 const CFD_VERT = /* glsl */`
-  varying vec3 vNormal;
-  varying vec3 vPosition;
+  varying vec3 vWorldNormal;
   void main() {
-    vNormal = normalize(normalMatrix * normal);
-    vPosition = position;
+    // World-space normal: camera-independent, so pressure is fixed
+    // regardless of orbit angle. modelMatrix = mesh's matrixWorld.
+    vWorldNormal = normalize(mat3(modelMatrix) * normal);
     gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
   }
 `
 
 const CFD_FRAG = /* glsl */`
-  varying vec3 vNormal;
-  varying vec3 vPosition;
+  varying vec3 vWorldNormal;
   uniform float cdValue;
 
   void main() {
-    vec3 windDir = normalize(vec3(0.0, 0.0, -1.0));
-    // Negate so front-facing (stagnation) = high pressure = red/orange
-    float pressure = -dot(vNormal, windDir);
+    // Wind blows in -Z world direction; surfaces with +Z world normals
+    // face the wind → stagnation (high pressure, red/orange).
+    float pressure = vWorldNormal.z;
 
     vec3 color;
     if (pressure > 0.6) {
@@ -314,7 +313,12 @@ export default function ModelViewer({ modelUrl, cdValue, loading, loadingMessage
     const gltfLoader = new GLTFLoader()
     gltfLoader.setDRACOLoader(dracoLoader)
 
-    const streamMat = new THREE.LineBasicMaterial({ vertexColors: true, depthWrite: false })
+    const streamMat = new THREE.LineBasicMaterial({
+      vertexColors: true,
+      depthWrite: false,
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+    })
 
     const state: ViewerState = {
       renderer, scene, camera, controls, loader: gltfLoader,
@@ -390,7 +394,9 @@ export default function ModelViewer({ modelUrl, cdValue, loading, loadingMessage
             (sd.posArr[j * 3 + 1] - center.y + size.y * 0.65) / (size.y * 1.3)
           ))
           const [r, g, b] = vertexColor(normY, sd.eDistArr[j], sd.nzArr[j])
-          const brightness = Math.pow((j + 1) / TRAIL_LENGTH, 0.5)
+          // ^0.35 keeps the trail bright longer; *0.35 caps per-line brightness
+          // so additive blending of ~3 overlapping lines reaches ~1.0
+          const brightness = Math.pow((j + 1) / TRAIL_LENGTH, 0.35) * 0.35
           sd.colArr[j * 3]     = r * brightness
           sd.colArr[j * 3 + 1] = g * brightness
           sd.colArr[j * 3 + 2] = b * brightness
