@@ -92,35 +92,97 @@ function extractEdges(canvas: HTMLCanvasElement): { edgeTop: Int32Array; edgeBot
   return { edgeTop, edgeBottom }
 }
 
-type Trail = { x: number; y: number; deflection: number }
+type Trail = { x: number; y: number; vy: number }
+
+type Particle = {
+  x: number
+  y: number
+  vy: number
+  startY: number
+  trail: Trail[]
+}
 
 function startCFD(
   canvas: HTMLCanvasElement,
   silhouetteUrl: string,
   edgeTop: Int32Array,
-  edgeBottom: Int32Array
+  edgeBottom: Int32Array,
+  dragCd: number
 ): () => void {
   const ctx = canvas.getContext('2d')!
   const w = canvas.width
   const h = canvas.height
-  const N = 80
-  const SPEED = 2.5
-  const INFLUENCE = 40
+  const N = 120
+  const SPEED = 2.0
+  const INFLUENCE = 30
 
-  const particles = Array.from({ length: N }, (_, i) => {
+  // Rightmost column with silhouette pixels → trailing edge for wake zone
+  let trailingEdge = 0
+  for (let x = w - 1; x >= 0; x--) {
+    if (edgeTop[x] !== -1) { trailingEdge = x; break }
+  }
+
+  const V_FREE = 1.4
+  const V_MAX = parseFloat((V_FREE * (1 + dragCd * 0.8)).toFixed(2))
+
+  const particles: Particle[] = Array.from({ length: N }, (_, i) => {
     const startY = (i + 0.5) * (h / N)
-    return { x: Math.random() * w, y: startY, startY, trail: [] as Trail[] }
+    return { x: Math.random() * w * 0.25, y: startY, vy: 0, startY, trail: [] }
   })
 
   const silImg = new Image()
   silImg.crossOrigin = 'anonymous'
   silImg.src = silhouetteUrl
 
-  function deflectionColor(d: number): string {
-    if (d < 2) return '#4fc3f7'
-    if (d < 5) return '#81c784'
-    if (d < 10) return '#ffb74d'
-    return '#ef5350'
+  // Color by |vy|: high = deflected = blue (fast), low = laminar = red (slow)
+  function velocityColor(vy: number): string {
+    const v = Math.abs(vy)
+    if (v < 0.5) return '#ef5350'
+    if (v < 1.5) return '#ffb74d'
+    if (v < 3.0) return '#81c784'
+    return '#4fc3f7'
+  }
+
+  const BAR_W = 14
+  const BAR_H = Math.round(h * 0.55)
+  const BAR_X = w - BAR_W - 36
+  const BAR_Y = Math.round((h - BAR_H) / 2)
+
+  function drawScaleBar() {
+    const grad = ctx.createLinearGradient(0, BAR_Y + BAR_H, 0, BAR_Y)
+    grad.addColorStop(0.0, '#ef5350')
+    grad.addColorStop(0.33, '#ffb74d')
+    grad.addColorStop(0.66, '#81c784')
+    grad.addColorStop(1.0, '#4fc3f7')
+    ctx.fillStyle = grad
+    ctx.fillRect(BAR_X, BAR_Y, BAR_W, BAR_H)
+    ctx.strokeStyle = '#2a2a2a'
+    ctx.lineWidth = 1
+    ctx.strokeRect(BAR_X, BAR_Y, BAR_W, BAR_H)
+
+    ctx.font = '9px "JetBrains Mono", monospace'
+    ctx.textAlign = 'right'
+    const ticks = [
+      { frac: 1.0, label: V_MAX.toFixed(1) },
+      { frac: 0.5, label: (V_MAX / 2).toFixed(1) },
+      { frac: 0.0, label: '0.0' },
+    ]
+    for (const { frac, label } of ticks) {
+      const ty = BAR_Y + BAR_H - frac * BAR_H
+      ctx.fillStyle = '#444'
+      ctx.fillRect(BAR_X - 4, ty - 0.5, 4, 1)
+      ctx.fillStyle = '#777'
+      ctx.fillText(label, BAR_X - 7, ty + 3.5)
+    }
+
+    ctx.save()
+    ctx.translate(BAR_X + BAR_W + 12, BAR_Y + BAR_H / 2)
+    ctx.rotate(-Math.PI / 2)
+    ctx.fillStyle = '#444'
+    ctx.font = '8px "JetBrains Mono", monospace'
+    ctx.textAlign = 'center'
+    ctx.fillText('VELOCITY (m/s)', 0, 0)
+    ctx.restore()
   }
 
   let animId: number
@@ -132,58 +194,80 @@ function startCFD(
     ctx.fillStyle = '#0a0a0a'
     ctx.fillRect(0, 0, w, h)
 
+    // Red wake zone behind trailing edge (turbulent recirculation)
+    if (trailingEdge > 0 && trailingEdge < w) {
+      const wakeGrad = ctx.createLinearGradient(trailingEdge, 0, Math.min(trailingEdge + 160, w), 0)
+      wakeGrad.addColorStop(0, 'rgba(239,83,80,0.13)')
+      wakeGrad.addColorStop(1, 'rgba(239,83,80,0)')
+      ctx.fillStyle = wakeGrad
+      ctx.fillRect(trailingEdge, 0, 160, h)
+    }
+
     for (const p of particles) {
-      if (p.x > w + 20) {
+      // ── Step 1: advance horizontally ──────────────────────────────────────
+      p.x += SPEED
+
+      // Reset only when exiting the right edge
+      if (p.x > w + 10) {
         p.x = 0
         p.y = p.startY
+        p.vy = 0
         p.trail = []
+        continue
       }
 
+      // ── Step 2: edge influence at current column ───────────────────────────
       const col = Math.round(p.x)
-      let deflection = 0
-      let dy = 0
-
       if (col >= 0 && col < w) {
         const top = edgeTop[col]
         const bot = edgeBottom[col]
 
         if (top !== -1 && bot !== -1) {
-          const distTop = p.y - top     // positive = below top edge
-          const distBot = bot - p.y     // positive = above bottom edge
-
-          if (distTop >= 0 && distBot >= 0) {
-            // Inside silhouette — push to nearest edge
-            deflection = INFLUENCE
-            dy = distTop <= distBot ? -(INFLUENCE * 0.4) : INFLUENCE * 0.4
+          if (p.y >= top && p.y <= bot) {
+            // ── Inside silhouette: snap to nearest edge, never reset ─────────
+            const dTop = p.y - top
+            const dBot = bot - p.y
+            if (dTop <= dBot) {
+              p.y = top - 1
+              if (p.vy > 0) p.vy = 0  // kill inward momentum
+            } else {
+              p.y = bot + 1
+              if (p.vy < 0) p.vy = 0
+            }
+          } else if (p.y < top) {
+            // ── Above body: push upward within 30px influence ────────────────
+            const gap = top - p.y
+            if (gap < INFLUENCE) {
+              p.vy -= (INFLUENCE - gap) / INFLUENCE * 0.8
+            }
           } else {
-            // Outside — deflect if within influence zone
-            const gapAbove = -distTop   // how far above the top edge we are
-            const gapBelow = -distBot   // how far below the bottom edge we are
-
-            if (gapAbove > 0 && gapAbove < INFLUENCE) {
-              deflection = INFLUENCE - gapAbove
-              dy = -deflection * 0.12
-            } else if (gapBelow > 0 && gapBelow < INFLUENCE) {
-              deflection = INFLUENCE - gapBelow
-              dy = deflection * 0.12
+            // ── Below body: push downward within 30px influence ─────────────
+            const gap = p.y - bot
+            if (gap < INFLUENCE) {
+              p.vy += (INFLUENCE - gap) / INFLUENCE * 0.8
             }
           }
         }
       }
 
-      p.y = Math.max(0, Math.min(h - 1, p.y + dy))
-      p.trail.push({ x: p.x, y: p.y, deflection })
-      if (p.trail.length > 35) p.trail.shift()
-      p.x += SPEED
+      // ── Step 3: damping + integrate ────────────────────────────────────────
+      p.vy *= 0.85
+      p.y += p.vy
+      p.y = Math.max(0, Math.min(h - 1, p.y))
 
+      // ── Step 4: record trail ───────────────────────────────────────────────
+      p.trail.push({ x: p.x, y: p.y, vy: p.vy })
+      if (p.trail.length > 45) p.trail.shift()
+
+      // ── Step 5: draw trail, colored by |vy| ───────────────────────────────
       if (p.trail.length > 1) {
         for (let i = 1; i < p.trail.length; i++) {
           const prev = p.trail[i - 1]
           const curr = p.trail[i]
           ctx.beginPath()
-          ctx.strokeStyle = deflectionColor(curr.deflection)
-          ctx.globalAlpha = 0.35 + 0.65 * (i / p.trail.length)
-          ctx.lineWidth = 1.5
+          ctx.strokeStyle = velocityColor(curr.vy)
+          ctx.globalAlpha = 0.25 + 0.75 * (i / p.trail.length)
+          ctx.lineWidth = 1.2
           ctx.moveTo(prev.x, prev.y)
           ctx.lineTo(curr.x, curr.y)
           ctx.stroke()
@@ -193,11 +277,12 @@ function startCFD(
 
     ctx.globalAlpha = 1
 
-    // Draw silhouette on top — transparent pixels show streamlines, body hides them
+    // Silhouette on top — transparent areas let streamlines show through
     if (silImg.complete && silImg.naturalWidth > 0) {
       ctx.drawImage(silImg, 0, 0, w, h)
     }
 
+    drawScaleBar()
     animId = requestAnimationFrame(tick)
   }
 
@@ -398,7 +483,7 @@ export default function App() {
 
       setState(s => ({ ...s, loading: false, loadingMessage: '' }))
 
-      const cleanup = startCFD(canvas, bgRemovedUrl, edgeTop, edgeBottom)
+      const cleanup = startCFD(canvas, bgRemovedUrl, edgeTop, edgeBottom, state.drag!.Cd)
       cfdCleanupRef.current = cleanup
 
       // Vision analysis if we have front photo
