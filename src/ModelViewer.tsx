@@ -51,8 +51,15 @@ interface ModelViewerProps {
   loadingMessage: string
 }
 
-interface ArrowData {
-  helper: THREE.ArrowHelper
+// One streamline: a polyline whose head advances each frame, dragging a fading trail
+interface StreamData {
+  line: THREE.Line
+  geo: THREE.BufferGeometry
+  posArr: Float32Array  // TRAIL_LENGTH * 3 — index 0 = tail, last = head
+  colArr: Float32Array  // TRAIL_LENGTH * 3
+  headX: number
+  headY: number
+  headZ: number
   vx: number
   vy: number
 }
@@ -64,12 +71,24 @@ interface ViewerState {
   controls: OrbitControls
   loader: GLTFLoader
   currentModel: THREE.Group | null
-  arrowData: ArrowData[]
+  streams: StreamData[]
+  streamMat: THREE.LineBasicMaterial
   animId: number
   cdMaterials: THREE.ShaderMaterial[]
   center: THREE.Vector3
   size: THREE.Vector3
 }
+
+// ─── Constants ────────────────────────────────────────────────────────────────
+
+const TRAIL_LENGTH = 50   // vertices per streamline
+const NUM_STREAMS  = 280
+const WIND_SPEED   = 0.022
+const BODY_RX = 0.58
+const BODY_RY = 0.58
+const BODY_RZ = 0.65
+const DEFLECT_FORCE   = 0.028
+const LATERAL_DAMPING = 0.90
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -88,32 +107,63 @@ function applyShader(root: THREE.Object3D, mat: THREE.ShaderMaterial) {
   })
 }
 
-function spawnArrows(
-  scene: THREE.Scene,
-  center: THREE.Vector3,
-  size: THREE.Vector3
-): ArrowData[] {
-  const arrowData: ArrowData[] = []
-  const dir = new THREE.Vector3(0, 0, -1)
-  const len = Math.max(size.x, size.y) * 0.11
+// Height-based base color (cyan→green) tinted yellow at high lateral speed
+function headColor(normY: number, speed: number): [number, number, number] {
+  const t = Math.max(0, Math.min(1, normY))
+  let r = (0x4f + (0x00 - 0x4f) * t) / 255
+  let g = (0xc3 + (0xff - 0xc3) * t) / 255
+  let b = (0xf7 + (0x88 - 0xf7) * t) / 255
+  const s = Math.min(1, speed * 9)
+  r = r + (1.0 - r) * s * 0.55
+  g = g + (0.88 - g) * s * 0.30
+  b = b * (1 - s * 0.75)
+  return [r, g, b]
+}
 
-  for (let i = 0; i < 200; i++) {
-    const pos = new THREE.Vector3(
-      (Math.random() - 0.5) * size.x * 2.5 + center.x,
-      (Math.random() - 0.5) * size.y * 1.3 + center.y,
-      Math.random() * size.z * 3 + center.z + size.z
-    )
-    const t = Math.max(0, Math.min(1, (pos.y - center.y + size.y * 0.65) / (size.y * 1.3)))
-    const color = new THREE.Color(0x4fc3f7).lerp(new THREE.Color(0x00ff88), t)
-    const arrow = new THREE.ArrowHelper(dir, pos, len, color, len * 0.35, len * 0.18)
-    ;(arrow.line.material as THREE.LineBasicMaterial).transparent = true
-    ;(arrow.line.material as THREE.LineBasicMaterial).opacity = 0.45
-    ;(arrow.cone.material as THREE.MeshBasicMaterial).transparent = true
-    ;(arrow.cone.material as THREE.MeshBasicMaterial).opacity = 0.45
-    scene.add(arrow)
-    arrowData.push({ helper: arrow, vx: 0, vy: 0 })
+function initTrail(sd: StreamData) {
+  // Spread the initial trail along the upstream wind direction
+  for (let j = 0; j < TRAIL_LENGTH; j++) {
+    sd.posArr[j * 3]     = sd.headX
+    sd.posArr[j * 3 + 1] = sd.headY
+    // tail at higher Z (upstream), head at headZ
+    sd.posArr[j * 3 + 2] = sd.headZ + (TRAIL_LENGTH - 1 - j) * WIND_SPEED
   }
-  return arrowData
+  sd.colArr.fill(0)
+  sd.geo.attributes.position.needsUpdate = true
+  sd.geo.attributes.color.needsUpdate = true
+}
+
+function spawnStreams(
+  scene: THREE.Scene,
+  mat: THREE.LineBasicMaterial,
+  center: THREE.Vector3,
+  size: THREE.Vector3,
+): StreamData[] {
+  const streams: StreamData[] = []
+  for (let i = 0; i < NUM_STREAMS; i++) {
+    const startX = (Math.random() - 0.5) * size.x * 2.5 + center.x
+    const startY = (Math.random() - 0.5) * size.y * 1.3 + center.y
+    const startZ = Math.random() * size.z * 3 + center.z + size.z
+
+    const posArr = new Float32Array(TRAIL_LENGTH * 3)
+    const colArr = new Float32Array(TRAIL_LENGTH * 3)
+
+    const geo = new THREE.BufferGeometry()
+    geo.setAttribute('position', new THREE.BufferAttribute(posArr, 3))
+    geo.setAttribute('color',    new THREE.BufferAttribute(colArr, 3))
+
+    const line = new THREE.Line(geo, mat)
+    scene.add(line)
+
+    const sd: StreamData = {
+      line, geo, posArr, colArr,
+      headX: startX, headY: startY, headZ: startZ,
+      vx: 0, vy: 0,
+    }
+    initTrail(sd)
+    streams.push(sd)
+  }
+  return streams
 }
 
 function clearModel(state: ViewerState) {
@@ -121,30 +171,29 @@ function clearModel(state: ViewerState) {
     state.scene.remove(state.currentModel)
     state.currentModel = null
   }
-  for (const ad of state.arrowData) state.scene.remove(ad.helper)
-  state.arrowData = []
+  for (const sd of state.streams) {
+    state.scene.remove(sd.line)
+    sd.geo.dispose()
+  }
+  state.streams = []
   state.cdMaterials = []
 }
 
 function setupModel(model: THREE.Group, state: ViewerState, cdValue: number) {
   const box = new THREE.Box3().setFromObject(model)
-  const sz = new THREE.Vector3()
-  const ctr = new THREE.Vector3()
-  box.getSize(sz)
-  box.getCenter(ctr)
+  const sz = new THREE.Vector3(), ctr = new THREE.Vector3()
+  box.getSize(sz); box.getCenter(ctr)
 
   const scale = 2.0 / Math.max(sz.x, sz.y, sz.z)
   model.scale.setScalar(scale)
   model.position.set(-ctr.x * scale, -ctr.y * scale, -ctr.z * scale)
 
-  const box2 = new THREE.Box3().setFromObject(model)
-  box2.getSize(state.size)
-  box2.getCenter(state.center)
+  new THREE.Box3().setFromObject(model).getSize(state.size)
+  new THREE.Box3().setFromObject(model).getCenter(state.center)
 
   const mat = makeCFDMaterial(cdValue)
   state.cdMaterials = [mat]
   applyShader(model, mat)
-
   state.scene.add(model)
   state.currentModel = model
 
@@ -153,7 +202,7 @@ function setupModel(model: THREE.Group, state: ViewerState, cdValue: number) {
   state.camera.lookAt(state.center)
   state.controls.target.copy(state.center)
 
-  state.arrowData = spawnArrows(state.scene, state.center, state.size)
+  state.streams = spawnStreams(state.scene, state.streamMat, state.center, state.size)
 }
 
 function loadFallback(state: ViewerState, cdValue: number) {
@@ -167,7 +216,7 @@ function loadFallback(state: ViewerState, cdValue: number) {
   state.size.set(0.9, 1.75, 0.9)
   state.scene.add(group)
   state.currentModel = group
-  state.arrowData = spawnArrows(state.scene, state.center, state.size)
+  state.streams = spawnStreams(state.scene, state.streamMat, state.center, state.size)
 }
 
 // ─── Color scale bar overlay ─────────────────────────────────────────────────
@@ -200,20 +249,11 @@ function ColorScaleBar() {
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-// Ellipsoid half-axes as fraction of body size
-const BODY_RX = 0.58   // X half-axis (shoulder width radius)
-const BODY_RY = 0.58   // Y half-axis (height radius)
-const BODY_RZ = 0.65   // Z half-axis (depth radius, slightly larger for bow wave)
-const WIND_SPEED = 0.022
-const DEFLECT_FORCE = 0.028
-const LATERAL_DAMPING = 0.90
-const RESET_DIR = new THREE.Vector3(0, 0, -1)
-
 export default function ModelViewer({ modelUrl, cdValue, loading, loadingMessage }: ModelViewerProps) {
-  const mountRef = useRef<HTMLDivElement>(null)
-  const stateRef = useRef<ViewerState | null>(null)
-  const cdRef = useRef(cdValue)
-  const loadIdRef = useRef(0)
+  const mountRef    = useRef<HTMLDivElement>(null)
+  const stateRef    = useRef<ViewerState | null>(null)
+  const cdRef       = useRef(cdValue)
+  const loadIdRef   = useRef(0)
   const activeUrlRef = useRef<string | null>(null)
 
   useEffect(() => { cdRef.current = cdValue }, [cdValue])
@@ -234,9 +274,9 @@ export default function ModelViewer({ modelUrl, cdValue, loading, loadingMessage
     camera.position.set(0, 0, 5)
 
     const controls = new OrbitControls(camera, renderer.domElement)
-    controls.enableDamping = true
-    controls.dampingFactor = 0.06
-    controls.autoRotate = true
+    controls.enableDamping  = true
+    controls.dampingFactor  = 0.06
+    controls.autoRotate     = true
     controls.autoRotateSpeed = 0.7
 
     scene.add(new THREE.AmbientLight(0xffffff, 0.04))
@@ -246,9 +286,12 @@ export default function ModelViewer({ modelUrl, cdValue, loading, loadingMessage
     const gltfLoader = new GLTFLoader()
     gltfLoader.setDRACOLoader(dracoLoader)
 
+    // Shared material for all streamlines
+    const streamMat = new THREE.LineBasicMaterial({ vertexColors: true, depthWrite: false })
+
     const state: ViewerState = {
       renderer, scene, camera, controls, loader: gltfLoader,
-      currentModel: null, arrowData: [],
+      currentModel: null, streams: [], streamMat,
       animId: 0, cdMaterials: [],
       center: new THREE.Vector3(), size: new THREE.Vector3(1, 2, 1),
     }
@@ -262,60 +305,76 @@ export default function ModelViewer({ modelUrl, cdValue, loading, loadingMessage
     })
     ro.observe(mount)
 
-    const _tmpDir = new THREE.Vector3()
-
     const animate = () => {
       state.animId = requestAnimationFrame(animate)
       controls.update()
 
-      const { arrowData, center, size } = state
-      // Half-axes of the deflection ellipsoid in world units
+      const { streams, center, size } = state
       const hx = size.x * BODY_RX
       const hy = size.y * BODY_RY
       const hz = size.z * BODY_RZ
 
-      for (const ad of arrowData) {
-        const pos = ad.helper.position
+      for (const sd of streams) {
+        // ── Advance head ────────────────────────────────────────
+        sd.headZ -= WIND_SPEED
+        sd.headX += sd.vx
+        sd.headY += sd.vy
 
-        pos.z -= WIND_SPEED
+        // ── Ellipsoid deflection (no raycasting needed) ─────────
+        const dx = sd.headX - center.x
+        const dy = sd.headY - center.y
+        const dz = sd.headZ - center.z
+        const nx = dx / hx
+        const ny = dy / hy
+        const nz = dz / hz
+        const eDist = Math.sqrt(nx * nx + ny * ny + nz * nz)
 
-        // Normalized position inside the deflection ellipsoid (0 = surface, <0 = inside)
-        const nx = (pos.x - center.x) / hx
-        const ny = (pos.y - center.y) / hy
-        const nz = (pos.z - center.z) / hz
-        const ellipsoidDist = Math.sqrt(nx * nx + ny * ny + nz * nz)
-
-        // Deflect if inside the ellipsoid AND arrow is still on the upstream half
-        // (nz > 0 means the arrow is in front of the body center)
-        if (ellipsoidDist < 1.0 && nz > -0.3) {
-          const strength = (1.0 - ellipsoidDist) * DEFLECT_FORCE
-          const dx = pos.x - center.x
-          const dy = pos.y - center.y
-          const lateralLen = Math.sqrt(dx * dx + dy * dy)
-          if (lateralLen > 0.001) {
-            ad.vx += (dx / lateralLen) * strength
-            ad.vy += (dy / lateralLen) * strength
+        if (eDist < 1.0 && nz > -0.3) {
+          const strength = (1.0 - eDist) * DEFLECT_FORCE
+          const lat = Math.sqrt(dx * dx + dy * dy)
+          if (lat > 0.001) {
+            sd.vx += (dx / lat) * strength
+            sd.vy += (dy / lat) * strength
           } else {
-            // Arrow dead-center: ride over the top
-            ad.vy += strength
+            sd.vy += strength
           }
         }
 
-        pos.x += ad.vx
-        pos.y += ad.vy
-        ad.vx *= LATERAL_DAMPING
-        ad.vy *= LATERAL_DAMPING
+        sd.vx *= LATERAL_DAMPING
+        sd.vy *= LATERAL_DAMPING
 
-        _tmpDir.set(ad.vx, ad.vy, -WIND_SPEED).normalize()
-        ad.helper.setDirection(_tmpDir)
+        // ── Shift trail: drop tail, append new head ─────────────
+        // copyWithin shifts existing vertices one slot toward the tail
+        sd.posArr.copyWithin(0, 3)
+        const last = (TRAIL_LENGTH - 1) * 3
+        sd.posArr[last]     = sd.headX
+        sd.posArr[last + 1] = sd.headY
+        sd.posArr[last + 2] = sd.headZ
 
-        if (pos.z < center.z - size.z * 1.5) {
-          pos.z = center.z + size.z * 1.5
-          pos.x = (Math.random() - 0.5) * size.x * 2.5 + center.x
-          pos.y = (Math.random() - 0.5) * size.y * 1.3 + center.y
-          ad.vx = 0
-          ad.vy = 0
-          ad.helper.setDirection(RESET_DIR)
+        // ── Update vertex colors (fade tail→head, tint by speed) ─
+        const speed = Math.sqrt(sd.vx * sd.vx + sd.vy * sd.vy)
+        const normY = Math.max(0, Math.min(1,
+          (sd.headY - center.y + size.y * 0.65) / (size.y * 1.3)
+        ))
+        const [hr, hg, hb] = headColor(normY, speed)
+        for (let j = 0; j < TRAIL_LENGTH; j++) {
+          const brightness = Math.pow((j + 1) / TRAIL_LENGTH, 0.5)
+          sd.colArr[j * 3]     = hr * brightness
+          sd.colArr[j * 3 + 1] = hg * brightness
+          sd.colArr[j * 3 + 2] = hb * brightness
+        }
+
+        sd.geo.attributes.position.needsUpdate = true
+        sd.geo.attributes.color.needsUpdate    = true
+
+        // ── Reset when head exits the back of the volume ─────────
+        if (sd.headZ < center.z - size.z * 1.5) {
+          sd.headX = (Math.random() - 0.5) * size.x * 2.5 + center.x
+          sd.headY = (Math.random() - 0.5) * size.y * 1.3 + center.y
+          sd.headZ = center.z + size.z * 1.5
+          sd.vx = 0
+          sd.vy = 0
+          initTrail(sd)
         }
       }
 
@@ -341,6 +400,7 @@ export default function ModelViewer({ modelUrl, cdValue, loading, loadingMessage
     return () => {
       cancelAnimationFrame(state.animId)
       ro.disconnect()
+      streamMat.dispose()
       renderer.dispose()
       if (mount.contains(renderer.domElement)) mount.removeChild(renderer.domElement)
       stateRef.current = null
