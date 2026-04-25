@@ -9,11 +9,11 @@
   --surface: #111111;
   --surface2: #1a1a1a;
   --border: #2a2a2a;
-  --green: #00ff88;
-  --green-dim: #00cc66;
+  --green: #61e5ff;
+  --green-dim: #38c3c5;
   --text: #e8e8e8;
-  --text-muted: #666;
-  --text-dim: #999;
+  --text-muted: #c3c3c3;
+  --text-dim: #333;
   --mono: 'Lora', Georgia, 'Times New Roman', serif;
   --sans: 'Lora', Georgia, 'Times New Roman', serif;
   --blue: #4fc3f7;

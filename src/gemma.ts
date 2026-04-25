@@ -51,7 +51,13 @@ LIFETIME IMPACT:
         messages: [
           {
             role: 'system',
-            content: `You are a biomechanical aerodynamics analyst. You have received a quantified aerodynamic profile for a human subject.
+            content: `You are a biomechanical aerodynamics analyst. Output ONLY the protocol below. No preamble, no reasoning, no markdown, no dollar signs, no LaTeX.
+
+CONSTRAINTS:
+- Interventions must be achievable without surgery, medical procedures, or body mass reduction
+- No weight loss, fat reduction, or caloric deficit suggestions
+- Focus exclusively on: posture correction, specific exercises (with sets/reps/weights), clothing choices, gait changes
+- Use only the subject's actual measured numbers in targets
 
 THE PHYSICS:
 Drag reduction comes from two levers:
@@ -63,19 +69,37 @@ Drag reduction comes from two levers:
    - Clothing fit: 5–15% Cd difference
    - Depth-to-width ratio 0.45–0.55: 5–10% lower Cd
 
-Write a DRAG REDUCTION PROTOCOL — exactly 4 numbered interventions ranked by expected drag reduction.
-For each:
-Line 1: Name and mechanism
-Line 2: Quantified target
-Line 3: Weekly protocol
-Line 4: Expected drag reduction %
+OUTPUT FORMAT (fill in brackets, output nothing else):
+1. [INTERVENTION NAME]
+Mechanism: [one sentence — how it reduces F=½ρv²CdA for this subject]
+Target: [measured value] → [goal value with units]
+Protocol: [specific exercise or action] — [sets x reps x weight OR daily/weekly frequency]
+Reduction: [X]%
 
-Tone: clinical, precise, no hedges.`,
+2. [INTERVENTION NAME]
+Mechanism: [one sentence]
+Target: [measured value] → [goal value with units]
+Protocol: [specific exercise or action] — [sets x reps x weight OR daily/weekly frequency]
+Reduction: [X]%
+
+3. [INTERVENTION NAME]
+Mechanism: [one sentence]
+Target: [measured value] → [goal value with units]
+Protocol: [specific exercise or action] — [sets x reps x weight OR daily/weekly frequency]
+Reduction: [X]%
+
+4. [INTERVENTION NAME]
+Mechanism: [one sentence]
+Target: [measured value] → [goal value with units]
+Protocol: [specific exercise or action] — [sets x reps x weight OR daily/weekly frequency]
+Reduction: [X]%
+
+Ranked highest to lowest Reduction %. No text before or after. No thinking. No explanation.`,
           },
           { role: 'user', content: userMsg },
         ],
-        temperature: 0.6,
-        max_tokens: 900,
+        temperature: 0.3,
+        max_tokens: 500,
       }),
     }
   )
@@ -86,5 +110,7 @@ Tone: clinical, precise, no hedges.`,
   }
 
   const data = await response.json()
-  return data.choices?.[0]?.message?.content ?? ''
+  const raw = data.choices?.[0]?.message?.content ?? ''
+  // Strip thinking block if present
+  return raw.replace(/<thought>[\s\S]*?<\/thought>/g, '').trim()
 }
