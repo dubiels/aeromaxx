@@ -206,31 +206,16 @@ export default function App() {
   const [gallery, setGallery]             = useState<GalleryItem[]>([])
 
   // Pipeline state refs — stable across renders, safe to read in async callbacks
-  const poseDataRef     = useRef<{ measurements: BodyMeasurements; drag: DragResults } | null>(null)
-  const glbReadyRef     = useRef<GlbMeasurements | null>(null)
-  const gemmaRunningRef = useRef(false)
+  const poseDataRef          = useRef<{ measurements: BodyMeasurements; drag: DragResults } | null>(null)
+  const gemmaResultRef       = useRef<string | null>(null)
+  const userModelRenderedRef = useRef(false)
+  const gemmaRunningRef      = useRef(false)
 
-  // ── Gemma gate: fires only when BOTH pose AND 3D geometry are available ──────
+  // ── Reveal gate: shows Gemma result only after the user's 3D model has rendered ──
 
-  const tryRunGemma = useCallback(async () => {
-    if (gemmaRunningRef.current) return
-    const pose = poseDataRef.current
-    const glb  = glbReadyRef.current
-    if (!pose || !glb) return
-
-    gemmaRunningRef.current = true
-    const drag = calculateDrag(pose.measurements, glb)
-    setAnalysis(s => ({ ...s, drag, loading: true, loadingMessage: 'Querying aerodynamics database...' }))
-    try {
-      const recommendations = await getRecommendations(pose.measurements, drag, glb)
-      setAnalysis(s => ({ ...s, recommendations, loading: false, loadingMessage: '' }))
-    } catch (err) {
-      setAnalysis(s => ({
-        ...s, loading: false, loadingMessage: '',
-        error: err instanceof Error ? err.message : 'Gemma analysis failed',
-      }))
-    } finally {
-      gemmaRunningRef.current = false
+  const tryRevealGemma = useCallback(() => {
+    if (gemmaResultRef.current !== null && userModelRenderedRef.current) {
+      setAnalysis(s => ({ ...s, recommendations: gemmaResultRef.current! }))
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -266,12 +251,28 @@ export default function App() {
         loading: false, loadingMessage: '',
       }))
 
-      void tryRunGemma()
+      void runGemma(measurements, drag)
     } catch (err) {
       setAnalysis(s => ({
         ...s, loading: false, loadingMessage: '',
         error: err instanceof Error ? err.message : 'Analysis failed',
       }))
+    }
+  }
+
+  async function runGemma(measurements: BodyMeasurements, drag: DragResults) {
+    if (gemmaRunningRef.current) return
+    gemmaRunningRef.current = true
+    try {
+      const recommendations = await getRecommendations(measurements, drag, null)
+      gemmaResultRef.current = recommendations
+      tryRevealGemma()
+    } catch (err) {
+      setAnalysis(s => ({
+        ...s, error: err instanceof Error ? err.message : 'Gemma analysis failed',
+      }))
+    } finally {
+      gemmaRunningRef.current = false
     }
   }
 
@@ -306,12 +307,16 @@ export default function App() {
   }
 
   // Fires when ModelViewer loads and measures the GLB geometry.
-  // Stores the 3D data and attempts to run Gemma if pose is also ready.
-  const handleGeometryMeasured = useCallback((glb: GlbMeasurements) => {
-    glbReadyRef.current = glb
-    setAnalysis(s => ({ ...s, glbMeasurements: glb }))
-    void tryRunGemma()
-  }, [tryRunGemma])
+  // isUserModel=true only when the user's Meshy GLB has rendered (not the default fallback).
+  const handleGeometryMeasured = useCallback((glb: GlbMeasurements, isUserModel: boolean) => {
+    const pose = poseDataRef.current
+    const drag = pose ? calculateDrag(pose.measurements, glb) : null
+    setAnalysis(s => ({ ...s, glbMeasurements: glb, ...(drag ? { drag } : {}) }))
+    if (isUserModel) {
+      userModelRenderedRef.current = true
+      tryRevealGemma()
+    }
+  }, [tryRevealGemma]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSnapshot = useCallback((dataUrl: string, glbUrl: string) => {
     setGallery(prev => prev.some(g => g.glbUrl === glbUrl) ? prev : [...prev, { glbUrl, thumb: dataUrl }])
@@ -325,9 +330,13 @@ export default function App() {
     setFrontUrl(url)
     setMeshyModelUrl(null)
     setAnalysis(INIT)
-    poseDataRef.current     = null
-    glbReadyRef.current     = null
-    gemmaRunningRef.current = false
+    poseDataRef.current          = null
+    gemmaResultRef.current       = null
+    userModelRenderedRef.current = false
+    gemmaRunningRef.current      = false
+    // If Meshy is disabled, no 3D model will ever render — reveal Gemma immediately on completion
+    const meshyKey = import.meta.env.VITE_MESHY_API_KEY as string
+    if (!meshyKey || meshyKey.startsWith('your_')) userModelRenderedRef.current = true
     void runPoseAnalysis(url)
     void runMeshy(url)
   }, []) // eslint-disable-line react-hooks/exhaustive-deps

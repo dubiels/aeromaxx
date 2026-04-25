@@ -53,7 +53,7 @@ interface ModelViewerProps {
   cdValue: number
   loading: boolean
   loadingMessage: string
-  onGeometryMeasured?: (m: GlbMeasurements) => void
+  onGeometryMeasured?: (m: GlbMeasurements, isUserModel: boolean) => void
   onSnapshot?: (dataUrl: string, modelUrl: string) => void
 }
 
@@ -484,12 +484,12 @@ export default function ModelViewer({ modelUrl, cdValue, loading, loadingMessage
       if (loadIdRef.current !== myId || !stateRef.current) return
       clearModel(state)
       setupModel(gltf.scene, state, cdRef.current)
-      geoCallbackRef.current?.(measureGlb(state))
+      geoCallbackRef.current?.(measureGlb(state), false)
     }, undefined, () => {
       if (loadIdRef.current !== myId || !stateRef.current) return
       clearModel(state)
       loadFallback(state, cdRef.current)
-      geoCallbackRef.current?.(measureGlb(state))
+      geoCallbackRef.current?.(measureGlb(state), false)
     })
 
     return () => {
@@ -519,7 +519,7 @@ export default function ModelViewer({ modelUrl, cdValue, loading, loadingMessage
       if (loadIdRef.current !== myId || !stateRef.current) return
       clearModel(state)
       setupModel(gltf.scene, state, cdRef.current)
-      geoCallbackRef.current?.(measureGlb(state))
+      geoCallbackRef.current?.(measureGlb(state), true)
       setTimeout(() => {
         if (loadIdRef.current !== myId || !stateRef.current || !snapCallbackRef.current) return
         const src = state.renderer.domElement
@@ -533,7 +533,7 @@ export default function ModelViewer({ modelUrl, cdValue, loading, loadingMessage
       if (loadIdRef.current !== myId || !stateRef.current) return
       clearModel(state)
       loadFallback(state, cdRef.current)
-      geoCallbackRef.current?.(measureGlb(state))
+      geoCallbackRef.current?.(measureGlb(state), true)
     })
   }, [modelUrl])
 
