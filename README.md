@@ -1,7 +1,7 @@
 # AeroMaxx
 
 **Looksmaxx your aerodynamics. Streamline your life.**
-
+<img src="public/medium-quality-aeromaxx-gif.gif" width="480" alt="Aeromaxx demo gif" />
 ---
 
 ## What is this?
