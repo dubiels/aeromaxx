@@ -8,12 +8,13 @@
 
 Looksmaxxing is the practice of optimizing every measurable aspect of your physical presentation, popularized by Clavicular, a streamer. Most people focus on skin, hair, jaw. 
 
-We focus on drag coefficient. Looksmaxx your aerodynamics. Streamline your life.
+**We focus on drag coefficient. Looksmaxx your aerodynamics. Streamline your life.**
 
-Upload a photo.
-Your stance gets analyzed -- 2D numbers are extracted and crunched while a 3D model with aerodynamic drag visualized and simulated in real-time is generated. 
-
-Nothing is hardcoded. Your photo generates real data and a real, interactive 3D model. you receive a personalized drag reduction protocol — specific exercises, posture corrections, and clothing changes — ranked by projected percentage improvement to your Cd, courtesy of Google Gemma.
+1. Upload a photo.
+2. Your stance gets analyzed -- 2D numbers are extracted and crunched while a 3D model with aerodynamic drag visualized and simulated in real-time is generated. 
+3. Nothing is hardcoded. Your photo generates real physics data with insights for how the calculations were formed.
+4. A real, interactive, 3D aerodynamic model is generated from your uploaded photo with extensive detail. You can rotate and observe the aerodynamic flow around your form in the 3D viewer.
+5. All of this 3D and 2D analysis data is given to Google Gemma, who provides you with a personalized drag reduction protocol — specific exercises, posture corrections, and clothing changes — ranked by projected percentage improvement to your Cd.
 
 The average person wastes **hundreds of Big Macs worth of energy** fighting air resistance over a lifetime. AeroMaxx quantifies exactly how much, and tells you what to do about it.
 
