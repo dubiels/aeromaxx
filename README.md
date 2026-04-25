@@ -47,6 +47,9 @@ The average person wastes **hundreds of Big Macs worth of energy** fighting air 
 
 ### 1. Page renders with default `.glb` file loaded
 
+![Default model streamlines animation](public/default-gif.gif)
+*The default model is a `.glb` file from [this repo](https://github.com/hmthanh/3d-human-model/tree/main)*
+
 `ModelViewer.tsx` initializes a Three.js `WebGLRenderer`, `PerspectiveCamera`, and `OrbitControls`. `GLTFLoader` fetches `/default-human2.glb` from the Vite dev server's static assets. Once loaded, a `Box3` bounding box is computed, the mesh is scaled so its tallest axis = 2.0 world units, and a custom `ShaderMaterial` is applied across all child `Mesh` objects.
 
 The vertex shader computes `vWorldNormal = normalize(mat3(modelMatrix) * normal)` in world space. The fragment shader maps the Z component of that normal to a pressure color: `pressure = vWorldNormal.z`, then linearly interpolates through red → orange → yellow → green → blue → navy across the range `[-1, 1]`.
@@ -69,6 +72,9 @@ Pixel distances computed as `dist = sqrt(((ax-bx)*W)² + ((ay-by)*H)²)`. Body h
 
 Those landmarks are then drawn back onto the canvas as green skeleton lines + labeled dots and exported as a base64 JPEG via `canvas.toDataURL()`.
 
+![MediaPipe pose landmark detection](public/mediapipe.png)
+*Of MediaPipe's 33 landmarks, AeroMaxx uses 9: nose (0), left/right shoulder (11, 12), left/right hip (23, 24), and left/right ankle (27, 28) for measurements, plus left/right elbow (13, 14), wrist (15, 16), and knee (25, 26) for the skeleton overlay.*
+
 **Drag physics** (`drag.ts`): `F = ½ρv²CdA` where `ρ = 1.225 kg/m³`, `v = 1.4 m/s`. Without GLB, `A = realShoulderWidth × 1.75 × 0.73` (0.73 = Kyle & Burke 1984 fill factor). Base `Cd = 0.80` (Hoerner 1965). Postural penalty: `hunchScore × 0.08` Cd units. Lifetime energy: `F × v × 4 hr/day × 3600 × 365 × 75 yr` joules.
 
 ---
@@ -78,6 +84,9 @@ Those landmarks are then drawn back onto the canvas as green skeleton lines + la
 The Cloudinary image is fetched, converted to a base64 data URI, and POSTed to `https://api.meshy.ai/openapi/v1/image-to-3d` with `{model: "meshy-6", symmetry_mode: "on", enable_pbr: false}`. Meshy returns a `task_id`. Polling hits `GET /openapi/v1/image-to-3d/{taskId}` every 3 seconds, reading `task.progress` until `status === "SUCCEEDED"`. Returns a signed `assets.meshy.ai` GLB URL.
 
 That URL is proxied through Vite (`/meshy-assets → https://assets.meshy.ai`) to bypass CORS, fetched as a blob, and uploaded to Cloudinary via `POST /v1_1/{cloud}/raw/upload` with `resource_type: raw` for persistent storage.
+
+![Meshy 3D reconstruction detail](public/detail.png)
+*Meshy image generation takes 120–180 seconds, but the detail is pretty good. In this image, it detected my lanyard, bracelet, and wristband correctly.*
 
 ---
 
