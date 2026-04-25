@@ -41,13 +41,13 @@ The average person wastes **hundreds of Big Macs worth of energy** fighting air 
 
 ## Logic Flow
 
-![AeroMaxx logic flow diagram](public/aeromaxx_logicflow.png)
+<img src="public/aeromaxx_logicflow.png" width="700" alt="AeroMaxx logic flow diagram" />
 
 ---
 
 ### 1. Page renders with default `.glb` file loaded
 
-![Default model streamlines animation](public/default-gif.gif)
+<img src="public/default-gif.gif" width="480" alt="Default model streamlines animation" /><br/>
 *The default model is a `.glb` file from [this repo](https://github.com/hmthanh/3d-human-model/tree/main)*
 
 `ModelViewer.tsx` initializes a Three.js `WebGLRenderer`, `PerspectiveCamera`, and `OrbitControls`. `GLTFLoader` fetches `/default-human2.glb` from the Vite dev server's static assets. Once loaded, a `Box3` bounding box is computed, the mesh is scaled so its tallest axis = 2.0 world units, and a custom `ShaderMaterial` is applied across all child `Mesh` objects.
@@ -72,8 +72,8 @@ Pixel distances computed as `dist = sqrt(((ax-bx)*W)² + ((ay-by)*H)²)`. Body h
 
 Those landmarks are then drawn back onto the canvas as green skeleton lines + labeled dots and exported as a base64 JPEG via `canvas.toDataURL()`.
 
-![MediaPipe pose landmark detection](public/mediapipe.png)
-*Of MediaPipe's 33 landmarks, AeroMaxx uses 9: nose (0), left/right shoulder (11, 12), left/right hip (23, 24), and left/right ankle (27, 28) for measurements, plus left/right elbow (13, 14), wrist (15, 16), and knee (25, 26) for the skeleton overlay.*
+<img src="public/mediapipe.png" width="420" alt="MediaPipe pose landmark detection" /><br/>
+*Of MediaPipe's 33 landmarks, AeroMaxx uses 9 for measurement: nose (0), left/right shoulder (11, 12), left/right hip (23, 24), and left/right ankle (27, 28). Elbow (13, 14), wrist (15, 16), and knee (25, 26) are drawn in the skeleton overlay but not used for drag calculation.*
 
 **Drag physics** (`drag.ts`): `F = ½ρv²CdA` where `ρ = 1.225 kg/m³`, `v = 1.4 m/s`. Without GLB, `A = realShoulderWidth × 1.75 × 0.73` (0.73 = Kyle & Burke 1984 fill factor). Base `Cd = 0.80` (Hoerner 1965). Postural penalty: `hunchScore × 0.08` Cd units. Lifetime energy: `F × v × 4 hr/day × 3600 × 365 × 75 yr` joules.
 
@@ -85,7 +85,7 @@ The Cloudinary image is fetched, converted to a base64 data URI, and POSTed to `
 
 That URL is proxied through Vite (`/meshy-assets → https://assets.meshy.ai`) to bypass CORS, fetched as a blob, and uploaded to Cloudinary via `POST /v1_1/{cloud}/raw/upload` with `resource_type: raw` for persistent storage.
 
-![Meshy 3D reconstruction detail](public/detail.png)
+<img src="public/detail.png" width="420" alt="Meshy 3D reconstruction detail" /><br/>
 *Meshy image generation takes 120–180 seconds, but the detail is pretty good. In this image, it detected my lanyard, bracelet, and wristband correctly.*
 
 ---
