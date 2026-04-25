@@ -54,6 +54,7 @@ interface ModelViewerProps {
   loading: boolean
   loadingMessage: string
   onGeometryMeasured?: (m: GlbMeasurements) => void
+  onSnapshot?: (dataUrl: string, modelUrl: string) => void
 }
 
 interface StreamData {
@@ -300,10 +301,10 @@ function ColorScaleBar() {
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', userSelect: 'none' }}>
       <div style={{
         fontFamily: 'var(--mono)', fontSize: 7, color: '#888', letterSpacing: 1,
-        textTransform: 'uppercase', marginBottom: 5, whiteSpace: 'nowrap',
+        marginBottom: 5, whiteSpace: 'nowrap',
         writingMode: 'vertical-lr', transform: 'rotate(180deg)',
       }}>
-        HIGH PRESSURE
+        High pressure
       </div>
       <div style={{
         width: 11, height: 140,
@@ -312,10 +313,10 @@ function ColorScaleBar() {
       }} />
       <div style={{
         fontFamily: 'var(--mono)', fontSize: 7, color: '#888', letterSpacing: 1,
-        textTransform: 'uppercase', marginTop: 5, whiteSpace: 'nowrap',
+        marginTop: 5, whiteSpace: 'nowrap',
         writingMode: 'vertical-lr',
       }}>
-        LOW PRESSURE
+        Low pressure
       </div>
     </div>
   )
@@ -323,15 +324,17 @@ function ColorScaleBar() {
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export default function ModelViewer({ modelUrl, cdValue, loading, loadingMessage, onGeometryMeasured }: ModelViewerProps) {
-  const mountRef       = useRef<HTMLDivElement>(null)
-  const stateRef       = useRef<ViewerState | null>(null)
-  const cdRef          = useRef(cdValue)
-  const loadIdRef      = useRef(0)
-  const activeUrlRef   = useRef<string | null>(null)
-  // Ref so load-callbacks always call the latest prop without re-running effects
-  const geoCallbackRef = useRef(onGeometryMeasured)
+export default function ModelViewer({ modelUrl, cdValue, loading, loadingMessage, onGeometryMeasured, onSnapshot }: ModelViewerProps) {
+  const mountRef          = useRef<HTMLDivElement>(null)
+  const stateRef          = useRef<ViewerState | null>(null)
+  const cdRef             = useRef(cdValue)
+  const loadIdRef         = useRef(0)
+  const activeUrlRef      = useRef<string | null>(null)
+  // Refs so load-callbacks always call the latest prop without re-running effects
+  const geoCallbackRef    = useRef(onGeometryMeasured)
+  const snapCallbackRef   = useRef(onSnapshot)
   useEffect(() => { geoCallbackRef.current = onGeometryMeasured }, [onGeometryMeasured])
+  useEffect(() => { snapCallbackRef.current = onSnapshot }, [onSnapshot])
 
   useEffect(() => { cdRef.current = cdValue }, [cdValue])
 
@@ -340,7 +343,7 @@ export default function ModelViewer({ modelUrl, cdValue, loading, loadingMessage
     const mount = mountRef.current
     if (!mount) return
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true })
+    const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true })
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
     renderer.setSize(mount.clientWidth, mount.clientHeight)
     renderer.setClearColor(0x080808)
@@ -511,11 +514,20 @@ export default function ModelViewer({ modelUrl, cdValue, loading, loadingMessage
     const myId = loadIdRef.current
     clearModel(state)
 
+    const capturedUrl = url
     state.loader.load(url, gltf => {
       if (loadIdRef.current !== myId || !stateRef.current) return
       clearModel(state)
       setupModel(gltf.scene, state, cdRef.current)
       geoCallbackRef.current?.(measureGlb(state))
+      setTimeout(() => {
+        if (loadIdRef.current !== myId || !stateRef.current || !snapCallbackRef.current) return
+        const src = state.renderer.domElement
+        const thumb = document.createElement('canvas')
+        thumb.width = 120; thumb.height = 90
+        thumb.getContext('2d')!.drawImage(src, 0, 0, 120, 90)
+        snapCallbackRef.current(thumb.toDataURL('image/jpeg', 0.85), capturedUrl)
+      }, 1200)
     }, undefined, err => {
       console.error('[AeroMaxx] GLB load failed:', err)
       if (loadIdRef.current !== myId || !stateRef.current) return
@@ -553,7 +565,7 @@ export default function ModelViewer({ modelUrl, cdValue, loading, loadingMessage
         }}>
           <div style={{ fontFamily: 'var(--mono)', color: 'var(--green)', fontSize: 13, letterSpacing: 3 }}
             className="pulse">
-            {loadingMessage || 'GENERATING 3D MODEL...'}
+            {loadingMessage || 'Generating 3D model...'}
           </div>
           <div style={{ fontFamily: 'var(--mono)', fontSize: 10, color: '#2a2a2a', letterSpacing: 4 }}>
             ░░░░░░░░░░

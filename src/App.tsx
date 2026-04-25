@@ -84,16 +84,29 @@ const INIT: AnalysisState = {
   loading: false, loadingMessage: '', error: null,
 }
 
+// ─── Types ───────────────────────────────────────────────────────────────────
+
+interface GalleryItem {
+  glbUrl: string
+  thumb: string
+}
+
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
 function SectionLabel({ n, children }: { n: string; children: React.ReactNode }) {
   return (
     <div style={{
+      display: 'flex', alignItems: 'center', gap: 10,
       fontFamily: 'var(--mono)', fontSize: 10, letterSpacing: 1.5,
-      color: 'var(--green)', textTransform: 'uppercase',
+      color: 'var(--green)',
       marginBottom: 14, paddingBottom: 10, borderBottom: '1px solid #1a1a1a',
     }}>
-      {n} // {children}
+      <span style={{
+        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+        width: 20, height: 20, borderRadius: '50%',
+        border: '1px solid var(--green)', fontSize: 9, flexShrink: 0,
+      }}>{n}</span>
+      {children}
     </div>
   )
 }
@@ -108,6 +121,48 @@ function DataRow({ label, value, accent, dim }: { label: string; value: string; 
       <span style={{ color: accent ? '#ffffff' : dim ? '#888' : 'var(--green)', fontWeight: accent ? 700 : 400, textAlign: 'right' }}>
         {value}
       </span>
+    </div>
+  )
+}
+
+function GalleryBar({ items, onLoad }: { items: GalleryItem[]; onLoad: (item: GalleryItem) => void }) {
+  const [hovered, setHovered] = useState(false)
+  if (items.length === 0) return null
+
+  const W = 56, H = 42, OVERLAP = 38
+
+  return (
+    <div
+      style={{
+        position: 'relative',
+        height: H,
+        width: hovered ? items.length * (W + 4) - 4 : W + (items.length - 1) * (W - OVERLAP),
+        transition: 'width 0.22s ease',
+        overflow: 'hidden',
+      }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
+      {items.map((item, i) => (
+        <div
+          key={item.glbUrl}
+          onClick={() => onLoad(item)}
+          style={{
+            position: 'absolute',
+            left: hovered ? i * (W + 4) : i * (W - OVERLAP),
+            top: 0,
+            width: W,
+            height: H,
+            cursor: 'pointer',
+            border: '1px solid #2a2a2a',
+            overflow: 'hidden',
+            transition: 'left 0.22s ease',
+            zIndex: items.length - i,
+          }}
+        >
+          <img src={item.thumb} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+        </div>
+      ))}
     </div>
   )
 }
@@ -128,12 +183,11 @@ function UploadPrompt({ onUpload }: { onUpload: () => void }) {
     >
       <div style={{
         fontFamily: 'var(--mono)', fontSize: 11, letterSpacing: 1,
-        color: hover ? 'var(--green)' : '#888', marginBottom: 10,
-        textTransform: 'uppercase',
+        color: hover ? 'var(--green)' : '#cfcfcfff', marginBottom: 10,
       }}>
-        Upload Subject Photograph
+        UPLOAD SUBJECT PHOTOGRAPH
       </div>
-      <div style={{ fontFamily: 'var(--sans)', fontSize: 12, color: '#888', lineHeight: 1.65 }}>
+      <div style={{ fontFamily: 'var(--sans)', fontSize: 12, color: '#c5c5c5ff', lineHeight: 1.65 }}>
         Front-facing, full body, arms slightly away from torso.<br />
         Plain background preferred. Good lighting required.
       </div>
@@ -149,6 +203,7 @@ export default function App() {
   const [meshyLoading, setMeshyLoading]   = useState(false)
   const [meshyMessage, setMeshyMessage]   = useState('')
   const [analysis, setAnalysis]           = useState<AnalysisState>(INIT)
+  const [gallery, setGallery]             = useState<GalleryItem[]>([])
 
   // Pipeline state refs — stable across renders, safe to read in async callbacks
   const poseDataRef     = useRef<{ measurements: BodyMeasurements; drag: DragResults } | null>(null)
@@ -165,7 +220,7 @@ export default function App() {
 
     gemmaRunningRef.current = true
     const drag = calculateDrag(pose.measurements, glb)
-    setAnalysis(s => ({ ...s, drag, loading: true, loadingMessage: 'QUERYING AERODYNAMICS DATABASE...' }))
+    setAnalysis(s => ({ ...s, drag, loading: true, loadingMessage: 'Querying aerodynamics database...' }))
     try {
       const recommendations = await getRecommendations(pose.measurements, drag, glb)
       setAnalysis(s => ({ ...s, recommendations, loading: false, loadingMessage: '' }))
@@ -182,7 +237,7 @@ export default function App() {
   // ── Pipelines ──────────────────────────────────────────────────────────────
 
   async function runPoseAnalysis(url: string) {
-    setAnalysis(s => ({ ...s, loading: true, loadingMessage: 'LOADING PHOTOGRAPHIC DATA...', error: null }))
+    setAnalysis(s => ({ ...s, loading: true, loadingMessage: 'Loading photographic data...', error: null }))
     try {
       const canvas = document.createElement('canvas')
       const img = new Image()
@@ -198,11 +253,11 @@ export default function App() {
         img.src = url
       })
 
-      setAnalysis(s => ({ ...s, loadingMessage: 'EXTRACTING BIOMECHANICAL LANDMARKS...' }))
+      setAnalysis(s => ({ ...s, loadingMessage: 'Extracting biomechanical landmarks...' }))
       const { landmarks, measurements, annotatedCanvas } = await extractLandmarks(canvas)
       const annotatedImageUrl = annotatedCanvas.toDataURL('image/jpeg', 0.88)
 
-      setAnalysis(s => ({ ...s, loadingMessage: 'COMPUTING AERODYNAMIC COEFFICIENTS...' }))
+      setAnalysis(s => ({ ...s, loadingMessage: 'Computing aerodynamic coefficients...' }))
       const drag = calculateDrag(measurements, null)
 
       poseDataRef.current = { measurements, drag }
@@ -224,15 +279,15 @@ export default function App() {
     const key = import.meta.env.VITE_MESHY_API_KEY
     if (!key || key.startsWith('your_')) return
     setMeshyLoading(true)
-    setMeshyMessage('GENERATING 3D MODEL...')
+    setMeshyMessage('Generating 3D model...')
     try {
       const base64 = await toBase64(url)
       const taskId = await createImageTo3DTask(base64)
       const glbUrl = await pollTask(taskId, pct => {
-        setMeshyMessage(`GENERATING 3D MODEL... ${pct}%`)
+        setMeshyMessage(`Generating 3D model... ${pct}%`)
       })
 
-      setMeshyMessage('UPLOADING TO CDN...')
+      setMeshyMessage('Uploading to CDN...')
       let finalUrl = glbUrl
       try {
         finalUrl = await uploadGlbToCloudinary(glbUrl)
@@ -257,6 +312,14 @@ export default function App() {
     setAnalysis(s => ({ ...s, glbMeasurements: glb }))
     void tryRunGemma()
   }, [tryRunGemma])
+
+  const handleSnapshot = useCallback((dataUrl: string, glbUrl: string) => {
+    setGallery(prev => prev.some(g => g.glbUrl === glbUrl) ? prev : [...prev, { glbUrl, thumb: dataUrl }])
+  }, [])
+
+  const handleGalleryLoad = useCallback((item: GalleryItem) => {
+    setMeshyModelUrl(item.glbUrl)
+  }, [])
 
   const handleUpload = useCallback((url: string) => {
     setFrontUrl(url)
@@ -286,11 +349,11 @@ export default function App() {
         </span>
       </div>
       <span style={{
-        fontFamily: 'var(--mono)', fontSize: 10, letterSpacing: 1,
-        color: '#cacacaff', textTransform: 'uppercase',
+        fontFamily: 'var(--mono)', fontSize: 13, letterSpacing: 1,
+        color: '#cacacaff',
         position: 'absolute', left: '50%', transform: 'translateX(-50%)',
       }}>
-        LOOKSMAXX YOUR AERODYNAMICS → STREAMLINE YOUR LIFE.
+        Looksmaxx your aerodynamics → streamline your life.
       </span>
     </header>
 
@@ -299,14 +362,20 @@ export default function App() {
       <div className="app-body">
 
         {/* Left — 3D viewer */}
-        <div className="viewer-col">
+        <div className="viewer-col" style={{ position: 'relative' }}>
           <ModelViewer
             modelUrl={meshyModelUrl}
             cdValue={d?.Cd ?? 0.8}
             loading={meshyLoading}
             loadingMessage={meshyMessage}
             onGeometryMeasured={handleGeometryMeasured}
+            onSnapshot={handleSnapshot}
           />
+          {gallery.length > 0 && (
+            <div style={{ position: 'absolute', bottom: 16, left: 16, zIndex: 10 }}>
+              <GalleryBar items={gallery} onLoad={handleGalleryLoad} />
+            </div>
+          )}
         </div>
 
         {/* Right — upload + stats */}
@@ -314,7 +383,7 @@ export default function App() {
 
           {/* 01 Upload */}
           <div className="panel-section">
-            <SectionLabel n="01">SUBJECT INPUT</SectionLabel>
+            <SectionLabel n="1">SUBJECT INPUT</SectionLabel>
             {!frontUrl ? (
               <UploadPrompt onUpload={() => openWidget(handleUpload)} />
             ) : (
@@ -399,7 +468,7 @@ export default function App() {
                   onClick={() => openWidget(handleUpload)}
                   style={{ marginTop: 12, width: '100%' }}
                 >
-                  NEW SUBJECT
+                  New subject
                 </button>
               </div>
             )}
@@ -408,13 +477,13 @@ export default function App() {
           {/* 02 Analysis report — appears as soon as pose analysis completes */}
           {d && m && (
             <div className="panel-section">
-              <SectionLabel n="02">AERODYNAMIC REPORT</SectionLabel>
+              <SectionLabel n="2">AERODYNAMIC REPORT</SectionLabel>
 
               <DataRow label="Drag Coefficient (Cd)" value={d.Cd.toFixed(4)} accent />
               <DataRow label="Frontal Area" value={`${d.frontalArea.toFixed(4)} m²`} />
               <DataRow
                 label="  └ area source"
-                value={glb ? '3D MODEL' : '2D ESTIMATE'}
+                value={glb ? '3D model' : '2D estimate'}
                 dim
               />
 
@@ -442,7 +511,7 @@ export default function App() {
           {/* 03 Drag reduction protocol — appears after both pose + 3D geometry complete */}
           {analysis.recommendations && (
             <div className="panel-section">
-              <SectionLabel n="03">DRAG REDUCTION PROTOCOL</SectionLabel>
+              <SectionLabel n="3">Drag reduction protocol</SectionLabel>
               <div style={{
                 fontFamily: 'var(--sans)', fontSize: 13, color: '#ccc',
                 lineHeight: 1.8, whiteSpace: 'pre-wrap',
@@ -452,15 +521,29 @@ export default function App() {
             </div>
           )}
 
-          <div style={{
-            fontFamily: 'var(--mono)', fontSize: 9, color: '#555',
-            letterSpacing: 1, textAlign: 'center', paddingTop: 8,
-          }}>
-            AEROMAXX SYSTEMS // BIOMECHANICAL EFFICIENCY DIVISION
-          </div>
-
         </div>
       </div>
+
+      {/* ── Full-width footer ── */}
+      <footer style={{
+        flexShrink: 0,
+        borderTop: '1px solid #1a1a1a',
+        padding: '10px 24px',
+        fontFamily: 'var(--mono)', fontSize: 10, color: '#666',
+        textAlign: 'center', lineHeight: 1.8,
+        background: '#0a0a0a',
+      }}>
+        Made by{' '}
+        <a href="https://linkedin.com/in/karolinadubiel" target="_blank" rel="noopener noreferrer"
+          style={{ color: 'var(--green)', textDecoration: 'none' }}>
+          Karolina Dubiel
+        </a>
+        {' '}for LAHacks 2026.{' '}
+        <a href="https://github.com/dubiels/aeromaxx" target="_blank" rel="noopener noreferrer"
+          style={{ color: 'var(--green)', textDecoration: 'none' }}>
+          Learn more about the algorithm →
+        </a>
+      </footer>
     </div>
   )
 }
