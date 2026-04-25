@@ -35,11 +35,11 @@ function openWidget(cb: (url: string) => void) {
       styles: {
         palette: {
           window: '#0f0f0f', windowBorder: '#2a2a2a',
-          tabIcon: '#00ff88', menuIcons: '#666',
+          tabIcon: 'var(--green)', menuIcons: '#666',
           textDark: '#e8e8e8', textLight: '#080808',
-          link: '#00ff88', action: '#00ff88',
+          link: 'var(--green)', action: 'var(--green)',
           inactiveTabIcon: '#444', error: '#ef5350',
-          inProgress: '#4fc3f7', complete: '#00ff88',
+          inProgress: '#4fc3f7', complete: 'var(--green)',
           sourceBg: '#1a1a1a',
         },
       },
@@ -90,7 +90,7 @@ function SectionLabel({ n, children }: { n: string; children: React.ReactNode })
   return (
     <div style={{
       fontFamily: 'var(--mono)', fontSize: 10, letterSpacing: 1.5,
-      color: '#00ff88', textTransform: 'uppercase',
+      color: 'var(--green)', textTransform: 'uppercase',
       marginBottom: 14, paddingBottom: 10, borderBottom: '1px solid #1a1a1a',
     }}>
       {n} // {children}
@@ -104,8 +104,8 @@ function DataRow({ label, value, accent, dim }: { label: string; value: string; 
       display: 'flex', justifyContent: 'space-between', gap: 8,
       fontFamily: 'var(--mono)', fontSize: 12, lineHeight: 2.1,
     }}>
-      <span style={{ color: dim ? '#333' : '#444' }}>{label}</span>
-      <span style={{ color: accent ? '#ffffff' : dim ? '#555' : '#00ff88', fontWeight: accent ? 700 : 400, textAlign: 'right' }}>
+      <span style={{ color: dim ? '#777' : '#aaa' }}>{label}</span>
+      <span style={{ color: accent ? '#ffffff' : dim ? '#888' : 'var(--green)', fontWeight: accent ? 700 : 400, textAlign: 'right' }}>
         {value}
       </span>
     </div>
@@ -121,19 +121,19 @@ function UploadPrompt({ onUpload }: { onUpload: () => void }) {
       onMouseLeave={() => setHover(false)}
       style={{
         display: 'block', width: '100%', textAlign: 'left',
-        border: `1px dashed ${hover ? '#00ff88' : '#2a2a2a'}`,
+        border: `1px dashed ${hover ? 'var(--green)' : '#444'}`,
         background: 'transparent', padding: '24px 20px',
         cursor: 'pointer', transition: 'border-color 0.15s',
       }}
     >
       <div style={{
         fontFamily: 'var(--mono)', fontSize: 11, letterSpacing: 1,
-        color: hover ? '#00ff88' : '#3a3a3a', marginBottom: 10,
+        color: hover ? 'var(--green)' : '#888', marginBottom: 10,
         textTransform: 'uppercase',
       }}>
         Upload Subject Photograph
       </div>
-      <div style={{ fontFamily: 'var(--sans)', fontSize: 12, color: '#3a3a3a', lineHeight: 1.65 }}>
+      <div style={{ fontFamily: 'var(--sans)', fontSize: 12, color: '#888', lineHeight: 1.65 }}>
         Front-facing, full body, arms slightly away from torso.<br />
         Plain background preferred. Good lighting required.
       </div>
@@ -275,22 +275,25 @@ export default function App() {
     <div className="app-shell">
 
       {/* ── Header ── */}
-      <header className="app-header">
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: 16 }}>
-          <span style={{
-            fontFamily: 'var(--mono)', fontSize: 17, fontWeight: 600,
-            color: '#00ff88', letterSpacing: 2,
-          }}>
-            AEROMAXX
-          </span>
-        </div>
+
+    <header className="app-header" style={{ position: 'relative' }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 16 }}>
         <span style={{
-          fontFamily: 'var(--mono)', fontSize: 10, letterSpacing: 1,
-          color: '#2a2a2a', textTransform: 'uppercase',
+          fontFamily: 'var(--mono)', fontSize: 17, fontWeight: 600,
+          color: 'var(--green)', letterSpacing: 2,
         }}>
-          AERODYNAMIC BODY ANALYSIS SYSTEM V2.1
+          AEROMAXX
         </span>
-      </header>
+      </div>
+      <span style={{
+        fontFamily: 'var(--mono)', fontSize: 10, letterSpacing: 1,
+        color: '#cacacaff', textTransform: 'uppercase',
+        position: 'absolute', left: '50%', transform: 'translateX(-50%)',
+      }}>
+        LOOKSMAXX YOUR AERODYNAMICS → STREAMLINE YOUR LIFE.
+      </span>
+    </header>
+
 
       {/* ── Two-column body ── */}
       <div className="app-body">
@@ -323,7 +326,7 @@ export default function App() {
                       src={frontUrl}
                       alt="Subject"
                       style={{
-                        width: '100%', maxHeight: 480, objectFit: 'contain',
+                        width: '100%', maxHeight: 360, objectFit: 'contain',
                         objectPosition: 'top', display: 'block',
                         border: '1px solid #1a1a1a', background: '#0a0a0a',
                       }}
@@ -331,7 +334,7 @@ export default function App() {
                     <div style={{
                       position: 'absolute', top: 6, left: 6,
                       fontFamily: 'var(--mono)', fontSize: 8, letterSpacing: 0.5,
-                      color: '#00ff88', background: 'rgba(8,8,8,0.85)', padding: '2px 5px',
+                      color: 'var(--green)', background: 'rgba(8,8,8,0.85)', padding: '2px 5px',
                     }}>
                       Input
                     </div>
@@ -343,20 +346,20 @@ export default function App() {
                         src={analysis.annotatedImageUrl}
                         alt="Pose scan"
                         style={{
-                          width: '100%', maxHeight: 480, objectFit: 'contain',
+                          width: '100%', maxHeight: 360, objectFit: 'contain',
                           objectPosition: 'top', display: 'block',
                           border: '1px solid #1a1a1a', background: '#0a0a0a',
                         }}
                       />
                     ) : (
                       <div style={{
-                        width: '100%', height: 300,
+                        width: '100%', height: 225,
                         border: '1px solid #1a1a1a', background: '#0a0a0a',
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                       }}>
                         <span style={{
                           fontFamily: 'var(--mono)', fontSize: 10, letterSpacing: 1,
-                          color: '#00ff88',
+                          color: 'var(--green)',
                         }} className="pulse">
                           Scanning...
                         </span>
@@ -365,7 +368,7 @@ export default function App() {
                     <div style={{
                       position: 'absolute', top: 6, left: 6,
                       fontFamily: 'var(--mono)', fontSize: 8, letterSpacing: 0.5,
-                      color: '#00ff88', background: 'rgba(8,8,8,0.85)', padding: '2px 5px',
+                      color: 'var(--green)', background: 'rgba(8,8,8,0.85)', padding: '2px 5px',
                     }}>
                       Pose Scan
                     </div>
@@ -374,7 +377,7 @@ export default function App() {
 
                 {analysis.loading && (
                   <div style={{
-                    fontFamily: 'var(--mono)', fontSize: 11, color: '#00ff88',
+                    fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--green)',
                     letterSpacing: 0.5, marginTop: 12,
                   }} className="pulse">
                     {analysis.loadingMessage}
@@ -450,7 +453,7 @@ export default function App() {
           )}
 
           <div style={{
-            fontFamily: 'var(--mono)', fontSize: 9, color: '#1e1e1e',
+            fontFamily: 'var(--mono)', fontSize: 9, color: '#555',
             letterSpacing: 1, textAlign: 'center', paddingTop: 8,
           }}>
             AEROMAXX SYSTEMS // BIOMECHANICAL EFFICIENCY DIVISION

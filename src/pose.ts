@@ -64,7 +64,7 @@ function drawAnnotatedCanvas(source: HTMLCanvasElement, lm: NormalizedLandmark[]
   ctx.fillRect(0, 0, w, h)
 
   // Skeleton lines
-  ctx.strokeStyle = '#00ff88'
+  ctx.strokeStyle = '#61e5ff'
   ctx.lineWidth = Math.max(2, w * 0.004)
   ctx.globalAlpha = 0.8
   for (const [a, b] of CONNECTIONS) {
@@ -89,13 +89,13 @@ function drawAnnotatedCanvas(source: HTMLCanvasElement, lm: NormalizedLandmark[]
     const py = p.y * h
 
     ctx.globalAlpha = 1.0
-    ctx.fillStyle = '#00ff88'
+    ctx.fillStyle = '#61e5ff'
     ctx.beginPath()
     ctx.arc(px, py, dotR, 0, Math.PI * 2)
     ctx.fill()
 
     ctx.globalAlpha = 0.85
-    ctx.fillStyle = '#00ff88'
+    ctx.fillStyle = '#61e5ff'
     ctx.fillText(label, px + dotR + 3, py + fontSize * 0.38)
   }
 

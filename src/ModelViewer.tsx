@@ -118,7 +118,7 @@ function applyShader(root: THREE.Object3D, mat: THREE.ShaderMaterial) {
 // Per-vertex color: undisturbed cyan/green blended toward CFD pressure
 // color as proximity to body increases. Matches the model surface shader exactly.
 function vertexColor(normY: number, eDist: number, nz: number): [number, number, number] {
-  // Undisturbed base: cyan (#4fc3f7) → green (#00ff88) by height
+  // Undisturbed base: cyan (#4fc3f7) → green (var(--green)) by height
   const t  = Math.max(0, Math.min(1, normY))
   const br = (0x4f + (0x00 - 0x4f) * t) / 255
   const bg = (0xc3 + (0xff - 0xc3) * t) / 255
@@ -551,7 +551,7 @@ export default function ModelViewer({ modelUrl, cdValue, loading, loadingMessage
           display: 'flex', flexDirection: 'column',
           alignItems: 'center', justifyContent: 'center', gap: 18,
         }}>
-          <div style={{ fontFamily: 'var(--mono)', color: '#00ff88', fontSize: 13, letterSpacing: 3 }}
+          <div style={{ fontFamily: 'var(--mono)', color: 'var(--green)', fontSize: 13, letterSpacing: 3 }}
             className="pulse">
             {loadingMessage || 'GENERATING 3D MODEL...'}
           </div>
