@@ -47,7 +47,7 @@ LIFETIME IMPACT:
         'Authorization': `Bearer ${import.meta.env.VITE_GEMINI_API_KEY}`,
       },
       body: JSON.stringify({
-        model: 'gemma-4-26b-a4b-it',
+        model: 'gemma-4-27b-it',
         messages: [
           {
             role: 'system',
@@ -80,6 +80,11 @@ Tone: clinical, precise, no hedges.`,
     }
   )
 
+  if (!response.ok) {
+    const errText = await response.text()
+    throw new Error(`Gemma API error ${response.status}: ${errText}`)
+  }
+
   const data = await response.json()
-  return data.choices[0].message.content ?? ''
+  return data.choices?.[0]?.message?.content ?? ''
 }

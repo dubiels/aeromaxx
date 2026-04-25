@@ -46,6 +46,7 @@ export interface AnalysisState {
   drag: DragResults | null
   recommendations: string | null
   visualRecommendations: string | null
+  annotatedImageUrl: string | null
   loading: boolean
   loadingMessage: string
   error: string | null

@@ -4,7 +4,7 @@ import { extractLandmarks } from './pose'
 import { calculateDrag } from './drag'
 import { getRecommendations } from './gemma'
 import { createImageTo3DTask, pollTask } from './meshy'
-import type { AnalysisState, GlbMeasurements } from './types'
+import type { AnalysisState, GlbMeasurements, BodyMeasurements, DragResults } from './types'
 
 const CLOUD_NAME    = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME as string
 const UPLOAD_PRESET = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET as string
@@ -50,9 +50,37 @@ function openWidget(cb: (url: string) => void) {
   )
 }
 
+async function toBase64(url: string): Promise<string> {
+  const res = await fetch(url)
+  const blob = await res.blob()
+  return new Promise(resolve => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(reader.result as string)
+    reader.readAsDataURL(blob)
+  })
+}
+
+async function uploadGlbToCloudinary(glbUrl: string): Promise<string> {
+  const proxyUrl = glbUrl.replace('https://assets.meshy.ai', '/meshy-assets')
+  const blob = await fetch(proxyUrl).then(r => {
+    if (!r.ok) throw new Error(`GLB fetch failed: ${r.status}`)
+    return r.blob()
+  })
+  const form = new FormData()
+  form.append('file', blob, 'model.glb')
+  form.append('upload_preset', UPLOAD_PRESET)
+  const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUD_NAME}/raw/upload`, {
+    method: 'POST',
+    body: form,
+  })
+  if (!res.ok) throw new Error(`Cloudinary GLB upload failed: ${res.status}`)
+  const data = await res.json()
+  return data.secure_url as string
+}
+
 const INIT: AnalysisState = {
   landmarks: null, measurements: null, glbMeasurements: null, drag: null,
-  recommendations: null, visualRecommendations: null,
+  recommendations: null, visualRecommendations: null, annotatedImageUrl: null,
   loading: false, loadingMessage: '', error: null,
 }
 
@@ -122,13 +150,38 @@ export default function App() {
   const [meshyMessage, setMeshyMessage]   = useState('')
   const [analysis, setAnalysis]           = useState<AnalysisState>(INIT)
 
-  // Keep latest analysis state accessible inside async callbacks without stale closure
-  const analysisRef = useRef(analysis)
-  analysisRef.current = analysis
+  // Pipeline state refs — stable across renders, safe to read in async callbacks
+  const poseDataRef     = useRef<{ measurements: BodyMeasurements; drag: DragResults } | null>(null)
+  const glbReadyRef     = useRef<GlbMeasurements | null>(null)
+  const gemmaRunningRef = useRef(false)
+
+  // ── Gemma gate: fires only when BOTH pose AND 3D geometry are available ──────
+
+  const tryRunGemma = useCallback(async () => {
+    if (gemmaRunningRef.current) return
+    const pose = poseDataRef.current
+    const glb  = glbReadyRef.current
+    if (!pose || !glb) return
+
+    gemmaRunningRef.current = true
+    const drag = calculateDrag(pose.measurements, glb)
+    setAnalysis(s => ({ ...s, drag, loading: true, loadingMessage: 'QUERYING AERODYNAMICS DATABASE...' }))
+    try {
+      const recommendations = await getRecommendations(pose.measurements, drag, glb)
+      setAnalysis(s => ({ ...s, recommendations, loading: false, loadingMessage: '' }))
+    } catch (err) {
+      setAnalysis(s => ({
+        ...s, loading: false, loadingMessage: '',
+        error: err instanceof Error ? err.message : 'Gemma analysis failed',
+      }))
+    } finally {
+      gemmaRunningRef.current = false
+    }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Pipelines ──────────────────────────────────────────────────────────────
 
-  async function runAnalysis(url: string) {
+  async function runPoseAnalysis(url: string) {
     setAnalysis(s => ({ ...s, loading: true, loadingMessage: 'LOADING PHOTOGRAPHIC DATA...', error: null }))
     try {
       const canvas = document.createElement('canvas')
@@ -146,17 +199,19 @@ export default function App() {
       })
 
       setAnalysis(s => ({ ...s, loadingMessage: 'EXTRACTING BIOMECHANICAL LANDMARKS...' }))
-      const { landmarks, measurements } = await extractLandmarks(canvas)
+      const { landmarks, measurements, annotatedCanvas } = await extractLandmarks(canvas)
+      const annotatedImageUrl = annotatedCanvas.toDataURL('image/jpeg', 0.88)
 
       setAnalysis(s => ({ ...s, loadingMessage: 'COMPUTING AERODYNAMIC COEFFICIENTS...' }))
-      // Initial drag calc from 2D photo (GLB not yet available)
       const drag = calculateDrag(measurements, null)
 
-      setAnalysis(s => ({ ...s, landmarks, measurements, drag, loading: false, loadingMessage: '' }))
+      poseDataRef.current = { measurements, drag }
+      setAnalysis(s => ({
+        ...s, landmarks, measurements, drag, annotatedImageUrl,
+        loading: false, loadingMessage: '',
+      }))
 
-      setAnalysis(s => ({ ...s, loading: true, loadingMessage: 'QUERYING AERODYNAMICS DATABASE...' }))
-      const recommendations = await getRecommendations(measurements, drag, null)
-      setAnalysis(s => ({ ...s, recommendations, loading: false, loadingMessage: '' }))
+      void tryRunGemma()
     } catch (err) {
       setAnalysis(s => ({
         ...s, loading: false, loadingMessage: '',
@@ -165,29 +220,28 @@ export default function App() {
     }
   }
 
-  async function toBase64(url: string): Promise<string> {
-    const res = await fetch(url)
-    const blob = await res.blob()
-    return new Promise(resolve => {
-      const reader = new FileReader()
-      reader.onload = () => resolve(reader.result as string)
-      reader.readAsDataURL(blob)
-    })
-  }
-
   async function runMeshy(url: string) {
     const key = import.meta.env.VITE_MESHY_API_KEY
     if (!key || key.startsWith('your_')) return
     setMeshyLoading(true)
     setMeshyMessage('GENERATING 3D MODEL...')
     try {
-      const base64 = await toBase64(url)  // convert cloudinary URL → base64
-      const taskId = await createImageTo3DTask(base64)  // pass base64 instead
+      const base64 = await toBase64(url)
+      const taskId = await createImageTo3DTask(base64)
       const glbUrl = await pollTask(taskId, pct => {
         setMeshyMessage(`GENERATING 3D MODEL... ${pct}%`)
       })
-      const proxiedUrl = glbUrl.replace('https://assets.meshy.ai', '/meshy-assets')
-      setMeshyModelUrl(proxiedUrl)
+
+      setMeshyMessage('UPLOADING TO CDN...')
+      let finalUrl = glbUrl
+      try {
+        finalUrl = await uploadGlbToCloudinary(glbUrl)
+      } catch (err) {
+        console.warn('[AeroMaxx] Cloudinary GLB upload failed, using proxy URL:', err)
+        finalUrl = glbUrl.replace('https://assets.meshy.ai', '/meshy-assets')
+      }
+
+      setMeshyModelUrl(finalUrl)
     } catch (err) {
       console.error('[AeroMaxx] Meshy failed:', err)
     } finally {
@@ -196,27 +250,22 @@ export default function App() {
     }
   }
 
-  // Called by ModelViewer once the GLB (or fallback) geometry is loaded.
-  // Re-runs drag physics with actual 3D measurements and refreshes recommendations.
+  // Fires when ModelViewer loads and measures the GLB geometry.
+  // Stores the 3D data and attempts to run Gemma if pose is also ready.
   const handleGeometryMeasured = useCallback((glb: GlbMeasurements) => {
-    const { measurements: m } = analysisRef.current
-    if (!m) return  // photo analysis hasn't completed yet — nothing to update
-
-    const drag = calculateDrag(m, glb)
-    setAnalysis(s => ({ ...s, glbMeasurements: glb, drag }))
-
-    // Re-run recommendations with the richer 3D data
-    setAnalysis(s => ({ ...s, loading: true, loadingMessage: 'REFINING ANALYSIS WITH 3D GEOMETRY...' }))
-    getRecommendations(m, drag, glb)
-      .then(recommendations => setAnalysis(s => ({ ...s, recommendations, loading: false, loadingMessage: '' })))
-      .catch(() => setAnalysis(s => ({ ...s, loading: false, loadingMessage: '' })))
-  }, [])
+    glbReadyRef.current = glb
+    setAnalysis(s => ({ ...s, glbMeasurements: glb }))
+    void tryRunGemma()
+  }, [tryRunGemma])
 
   const handleUpload = useCallback((url: string) => {
     setFrontUrl(url)
     setMeshyModelUrl(null)
     setAnalysis(INIT)
-    void runAnalysis(url)
+    poseDataRef.current     = null
+    glbReadyRef.current     = null
+    gemmaRunningRef.current = false
+    void runPoseAnalysis(url)
     void runMeshy(url)
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -267,22 +316,59 @@ export default function App() {
               <UploadPrompt onUpload={() => openWidget(handleUpload)} />
             ) : (
               <div>
-                <div style={{ position: 'relative' }}>
-                  <img
-                    src={frontUrl}
-                    alt="Subject"
-                    style={{
-                      width: '100%', maxHeight: 180, objectFit: 'cover',
-                      objectPosition: 'top', display: 'block',
-                      border: '1px solid #1a1a1a',
-                    }}
-                  />
-                  <div style={{
-                    position: 'absolute', top: 6, left: 6,
-                    fontFamily: 'var(--mono)', fontSize: 8, letterSpacing: 2,
-                    color: '#00ff88', background: 'rgba(8,8,8,0.8)', padding: '2px 6px',
-                  }}>
-                    FRONT VIEW
+                {/* Raw input + annotated pose scan side by side */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+                  <div style={{ position: 'relative' }}>
+                    <img
+                      src={frontUrl}
+                      alt="Subject"
+                      style={{
+                        width: '100%', maxHeight: 260, objectFit: 'contain',
+                        objectPosition: 'top', display: 'block',
+                        border: '1px solid #1a1a1a', background: '#0a0a0a',
+                      }}
+                    />
+                    <div style={{
+                      position: 'absolute', top: 6, left: 6,
+                      fontFamily: 'var(--mono)', fontSize: 7, letterSpacing: 2,
+                      color: '#00ff88', background: 'rgba(8,8,8,0.85)', padding: '2px 5px',
+                    }}>
+                      INPUT
+                    </div>
+                  </div>
+
+                  <div style={{ position: 'relative' }}>
+                    {analysis.annotatedImageUrl ? (
+                      <img
+                        src={analysis.annotatedImageUrl}
+                        alt="Pose scan"
+                        style={{
+                          width: '100%', maxHeight: 260, objectFit: 'contain',
+                          objectPosition: 'top', display: 'block',
+                          border: '1px solid #1a1a1a', background: '#0a0a0a',
+                        }}
+                      />
+                    ) : (
+                      <div style={{
+                        width: '100%', height: 160,
+                        border: '1px solid #1a1a1a', background: '#0a0a0a',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      }}>
+                        <span style={{
+                          fontFamily: 'var(--mono)', fontSize: 9, letterSpacing: 3,
+                          color: '#00ff88',
+                        }} className="pulse">
+                          SCANNING...
+                        </span>
+                      </div>
+                    )}
+                    <div style={{
+                      position: 'absolute', top: 6, left: 6,
+                      fontFamily: 'var(--mono)', fontSize: 7, letterSpacing: 2,
+                      color: '#00ff88', background: 'rgba(8,8,8,0.85)', padding: '2px 5px',
+                    }}>
+                      POSE SCAN
+                    </div>
                   </div>
                 </div>
 
@@ -316,15 +402,14 @@ export default function App() {
             )}
           </div>
 
-          {/* 02 Analysis report */}
+          {/* 02 Analysis report — appears as soon as pose analysis completes */}
           {d && m && (
             <div className="panel-section">
               <SectionLabel n="02">AERODYNAMIC REPORT</SectionLabel>
 
+              <DataRow label="Assumed Height" value="5′9″  (1.7526 m)" dim />
               <DataRow label="Drag Coefficient (Cd)" value={d.Cd.toFixed(4)} accent />
               <DataRow label="Frontal Area" value={`${d.frontalArea.toFixed(4)} m²`} />
-
-              {/* Show which source the frontal area came from */}
               <DataRow
                 label="  └ area source"
                 value={glb ? '3D MODEL' : '2D ESTIMATE'}
@@ -352,7 +437,7 @@ export default function App() {
             </div>
           )}
 
-          {/* 03 Drag reduction protocol */}
+          {/* 03 Drag reduction protocol — appears after both pose + 3D geometry complete */}
           {analysis.recommendations && (
             <div className="panel-section">
               <SectionLabel n="03">DRAG REDUCTION PROTOCOL</SectionLabel>
