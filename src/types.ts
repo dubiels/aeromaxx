@@ -30,9 +30,19 @@ export interface DragResults {
   posturalPenalty: number     // Cd units added from posture
 }
 
+// Measurements extracted from the Meshy GLB bounding box.
+// More accurate than 2D photo estimates because they capture actual 3D body volume.
+export interface GlbMeasurements {
+  realWidth: number           // m, shoulder-to-shoulder from 3D model
+  realDepth: number           // m, front-to-back body depth from 3D model
+  frontalArea: number         // m², realWidth × 1.75 × 0.73
+  depthToWidthRatio: number   // dimensionless streamlining factor
+}
+
 export interface AnalysisState {
   landmarks: Landmarks | null
   measurements: BodyMeasurements | null
+  glbMeasurements: GlbMeasurements | null
   drag: DragResults | null
   recommendations: string | null
   visualRecommendations: string | null

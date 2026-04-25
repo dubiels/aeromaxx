@@ -1,12 +1,12 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef } from 'react'
 import ModelViewer from './ModelViewer'
 import { extractLandmarks } from './pose'
 import { calculateDrag } from './drag'
 import { getRecommendations } from './groq'
 import { createImageTo3DTask, pollTask } from './meshy'
-import type { AnalysisState } from './types'
+import type { AnalysisState, GlbMeasurements } from './types'
 
-const CLOUD_NAME = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME as string
+const CLOUD_NAME    = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME as string
 const UPLOAD_PRESET = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET as string
 
 declare global {
@@ -51,7 +51,7 @@ function openWidget(cb: (url: string) => void) {
 }
 
 const INIT: AnalysisState = {
-  landmarks: null, measurements: null, drag: null,
+  landmarks: null, measurements: null, glbMeasurements: null, drag: null,
   recommendations: null, visualRecommendations: null,
   loading: false, loadingMessage: '', error: null,
 }
@@ -70,14 +70,14 @@ function SectionLabel({ n, children }: { n: string; children: React.ReactNode })
   )
 }
 
-function DataRow({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
+function DataRow({ label, value, accent, dim }: { label: string; value: string; accent?: boolean; dim?: boolean }) {
   return (
     <div style={{
       display: 'flex', justifyContent: 'space-between', gap: 8,
       fontFamily: 'var(--mono)', fontSize: 12, lineHeight: 2.1,
     }}>
-      <span style={{ color: '#444' }}>{label}</span>
-      <span style={{ color: accent ? '#ffffff' : '#00ff88', fontWeight: accent ? 700 : 400, textAlign: 'right' }}>
+      <span style={{ color: dim ? '#333' : '#444' }}>{label}</span>
+      <span style={{ color: accent ? '#ffffff' : dim ? '#555' : '#00ff88', fontWeight: accent ? 700 : 400, textAlign: 'right' }}>
         {value}
       </span>
     </div>
@@ -116,11 +116,15 @@ function UploadPrompt({ onUpload }: { onUpload: () => void }) {
 // ─── App ─────────────────────────────────────────────────────────────────────
 
 export default function App() {
-  const [frontUrl, setFrontUrl] = useState<string | null>(null)
+  const [frontUrl, setFrontUrl]           = useState<string | null>(null)
   const [meshyModelUrl, setMeshyModelUrl] = useState<string | null>(null)
-  const [meshyLoading, setMeshyLoading] = useState(false)
-  const [meshyMessage, setMeshyMessage] = useState('')
-  const [analysis, setAnalysis] = useState<AnalysisState>(INIT)
+  const [meshyLoading, setMeshyLoading]   = useState(false)
+  const [meshyMessage, setMeshyMessage]   = useState('')
+  const [analysis, setAnalysis]           = useState<AnalysisState>(INIT)
+
+  // Keep latest analysis state accessible inside async callbacks without stale closure
+  const analysisRef = useRef(analysis)
+  analysisRef.current = analysis
 
   // ── Pipelines ──────────────────────────────────────────────────────────────
 
@@ -145,12 +149,13 @@ export default function App() {
       const { landmarks, measurements } = await extractLandmarks(canvas)
 
       setAnalysis(s => ({ ...s, loadingMessage: 'COMPUTING AERODYNAMIC COEFFICIENTS...' }))
-      const drag = calculateDrag(measurements)
+      // Initial drag calc from 2D photo (GLB not yet available)
+      const drag = calculateDrag(measurements, null)
 
       setAnalysis(s => ({ ...s, landmarks, measurements, drag, loading: false, loadingMessage: '' }))
 
       setAnalysis(s => ({ ...s, loading: true, loadingMessage: 'QUERYING AERODYNAMICS DATABASE...' }))
-      const recommendations = await getRecommendations(measurements, drag)
+      const recommendations = await getRecommendations(measurements, drag, null)
       setAnalysis(s => ({ ...s, recommendations, loading: false, loadingMessage: '' }))
     } catch (err) {
       setAnalysis(s => ({
@@ -179,6 +184,22 @@ export default function App() {
     }
   }
 
+  // Called by ModelViewer once the GLB (or fallback) geometry is loaded.
+  // Re-runs drag physics with actual 3D measurements and refreshes recommendations.
+  const handleGeometryMeasured = useCallback((glb: GlbMeasurements) => {
+    const { measurements: m } = analysisRef.current
+    if (!m) return  // photo analysis hasn't completed yet — nothing to update
+
+    const drag = calculateDrag(m, glb)
+    setAnalysis(s => ({ ...s, glbMeasurements: glb, drag }))
+
+    // Re-run recommendations with the richer 3D data
+    setAnalysis(s => ({ ...s, loading: true, loadingMessage: 'REFINING ANALYSIS WITH 3D GEOMETRY...' }))
+    getRecommendations(m, drag, glb)
+      .then(recommendations => setAnalysis(s => ({ ...s, recommendations, loading: false, loadingMessage: '' })))
+      .catch(() => setAnalysis(s => ({ ...s, loading: false, loadingMessage: '' })))
+  }, [])
+
   const handleUpload = useCallback((url: string) => {
     setFrontUrl(url)
     setMeshyModelUrl(null)
@@ -187,7 +208,7 @@ export default function App() {
     void runMeshy(url)
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const { measurements: m, drag: d } = analysis
+  const { measurements: m, drag: d, glbMeasurements: glb } = analysis
 
   return (
     <div className="app-shell">
@@ -220,6 +241,7 @@ export default function App() {
             cdValue={d?.Cd ?? 0.8}
             loading={meshyLoading}
             loadingMessage={meshyMessage}
+            onGeometryMeasured={handleGeometryMeasured}
           />
         </div>
 
@@ -286,17 +308,35 @@ export default function App() {
           {d && m && (
             <div className="panel-section">
               <SectionLabel n="02">AERODYNAMIC REPORT</SectionLabel>
+
               <DataRow label="Drag Coefficient (Cd)" value={d.Cd.toFixed(4)} accent />
               <DataRow label="Frontal Area" value={`${d.frontalArea.toFixed(4)} m²`} />
+
+              {/* Show which source the frontal area came from */}
+              <DataRow
+                label="  └ area source"
+                value={glb ? '3D MODEL' : '2D ESTIMATE'}
+                dim
+              />
+
+              {glb && (
+                <>
+                  <DataRow label="Body Width (3D)" value={`${glb.realWidth.toFixed(3)} m`} />
+                  <DataRow label="Body Depth (3D)" value={`${glb.realDepth.toFixed(3)} m`} />
+                  <DataRow label="Depth/Width Ratio" value={glb.depthToWidthRatio.toFixed(3)} />
+                </>
+              )}
+
               <DataRow label="Shoulder Width" value={`${m.realShoulderWidth.toFixed(4)} m`} />
               <DataRow label="Hip Width" value={`${m.realHipWidth.toFixed(4)} m`} />
               <DataRow label="Hunch Score (0–1)" value={m.hunchScore.toFixed(4)} />
+              <DataRow label="Postural Cd Penalty" value={`+${d.posturalPenalty.toFixed(4)}`} />
               <DataRow label="Drag Force @ Walk" value={`${d.dragForce.toFixed(4)} N`} />
+
               <div style={{ borderTop: '1px solid #1a1a1a', margin: '8px 0' }} />
               <DataRow label="Lifetime Energy Lost" value={`${d.lifetimeEnergy.toLocaleString(undefined, { maximumFractionDigits: 0 })} J`} accent />
               <DataRow label="Energy Wasted" value={`${d.bigMacs.toFixed(1)} Big Macs`} />
               <DataRow label="Time Lost to Drag" value={`${d.daysLost.toFixed(1)} days of your life`} />
-              <DataRow label="Postural Penalty" value={`+${d.posturalPenalty.toFixed(4)} Cd`} />
             </div>
           )}
 

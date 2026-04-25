@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import * as THREE from 'three'
+import type { GlbMeasurements } from './types'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js'
@@ -49,6 +50,7 @@ interface ModelViewerProps {
   cdValue: number
   loading: boolean
   loadingMessage: string
+  onGeometryMeasured?: (m: GlbMeasurements) => void
 }
 
 interface StreamData {
@@ -193,6 +195,23 @@ function spawnStreams(
   return streams
 }
 
+// Convert the viewer's normalised bounding box back to real-world metres.
+// The model is scaled so its tallest dimension = 2 world units ≈ 1.75 m real height.
+// This gives us actual body width and front-to-back depth from the 3D geometry —
+// more accurate than the 2D shoulder-landmark estimate from the photo.
+function measureGlb(state: ViewerState): GlbMeasurements {
+  const REAL_HEIGHT = 1.75  // assumed average adult height (m)
+  const wh = state.size.y   // world-space height (≈ 2.0 after normalisation)
+  const realWidth = (state.size.x / wh) * REAL_HEIGHT
+  const realDepth = (state.size.z / wh) * REAL_HEIGHT
+  return {
+    realWidth,
+    realDepth,
+    frontalArea: realWidth * REAL_HEIGHT * 0.73,  // 0.73 = standard fill factor
+    depthToWidthRatio: realDepth / realWidth,
+  }
+}
+
 function clearModel(state: ViewerState) {
   if (state.currentModel) {
     state.scene.remove(state.currentModel)
@@ -276,12 +295,15 @@ function ColorScaleBar() {
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export default function ModelViewer({ modelUrl, cdValue, loading, loadingMessage }: ModelViewerProps) {
-  const mountRef     = useRef<HTMLDivElement>(null)
-  const stateRef     = useRef<ViewerState | null>(null)
-  const cdRef        = useRef(cdValue)
-  const loadIdRef    = useRef(0)
-  const activeUrlRef = useRef<string | null>(null)
+export default function ModelViewer({ modelUrl, cdValue, loading, loadingMessage, onGeometryMeasured }: ModelViewerProps) {
+  const mountRef       = useRef<HTMLDivElement>(null)
+  const stateRef       = useRef<ViewerState | null>(null)
+  const cdRef          = useRef(cdValue)
+  const loadIdRef      = useRef(0)
+  const activeUrlRef   = useRef<string | null>(null)
+  // Ref so load-callbacks always call the latest prop without re-running effects
+  const geoCallbackRef = useRef(onGeometryMeasured)
+  useEffect(() => { geoCallbackRef.current = onGeometryMeasured }, [onGeometryMeasured])
 
   useEffect(() => { cdRef.current = cdValue }, [cdValue])
 
@@ -428,10 +450,12 @@ export default function ModelViewer({ modelUrl, cdValue, loading, loadingMessage
       if (loadIdRef.current !== myId || !stateRef.current) return
       clearModel(state)
       setupModel(gltf.scene, state, cdRef.current)
+      geoCallbackRef.current?.(measureGlb(state))
     }, undefined, () => {
       if (loadIdRef.current !== myId || !stateRef.current) return
       clearModel(state)
       loadFallback(state, cdRef.current)
+      geoCallbackRef.current?.(measureGlb(state))
     })
 
     return () => {
@@ -460,11 +484,13 @@ export default function ModelViewer({ modelUrl, cdValue, loading, loadingMessage
       if (loadIdRef.current !== myId || !stateRef.current) return
       clearModel(state)
       setupModel(gltf.scene, state, cdRef.current)
+      geoCallbackRef.current?.(measureGlb(state))
     }, undefined, err => {
       console.error('[AeroMaxx] GLB load failed:', err)
       if (loadIdRef.current !== myId || !stateRef.current) return
       clearModel(state)
       loadFallback(state, cdRef.current)
+      geoCallbackRef.current?.(measureGlb(state))
     })
   }, [modelUrl])
 
