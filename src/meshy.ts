@@ -15,12 +15,21 @@ interface MeshyTask {
 }
 
 export async function createImageTo3DTask(imageUrl: string): Promise<string> {
-  const res = await fetch(`${BASE}/v1/image-to-3d`, {
+   console.log('[AeroMaxx] Sending image URL to Meshy:', imageUrl)
+  const res = await fetch(`${BASE}/openapi/v1/image-to-3d`, {
     method: 'POST',
     headers: headers(),
-    body: JSON.stringify({ image_url: imageUrl, enable_pbr: false, ai_model: 'meshy-4' }),
+  body: JSON.stringify({
+    image_url: imageUrl,
+    enable_pbr: false,
+    ai_model: 'meshy-6',  // latest model, better at humans
+    symmetry_mode: 'on',   // helps with bilateral human body
+})
   })
-  if (!res.ok) throw new Error(`Meshy create failed: ${res.status}`)
+  if (!res.ok) {
+    const body = await res.text()
+    throw new Error(`Meshy create failed: ${res.status} — ${body}`)
+  }
   const data = await res.json()
   return data.result as string
 }
@@ -34,7 +43,7 @@ export async function pollTask(
   while (Date.now() < deadline) {
     await new Promise(r => setTimeout(r, 3000))
 
-    const res = await fetch(`${BASE}/v1/image-to-3d/${taskId}`, { headers: headers() })
+    const res = await fetch(`${BASE}/openapi/v1/image-to-3d/${taskId}`, { headers: headers() })
     if (!res.ok) throw new Error(`Meshy poll failed: ${res.status}`)
     const task: MeshyTask = await res.json()
 

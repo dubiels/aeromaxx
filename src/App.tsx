@@ -2,7 +2,7 @@ import { useState, useCallback, useRef } from 'react'
 import ModelViewer from './ModelViewer'
 import { extractLandmarks } from './pose'
 import { calculateDrag } from './drag'
-import { getRecommendations } from './groq'
+import { getRecommendations } from './gemma'
 import { createImageTo3DTask, pollTask } from './meshy'
 import type { AnalysisState, GlbMeasurements } from './types'
 
@@ -165,17 +165,29 @@ export default function App() {
     }
   }
 
+  async function toBase64(url: string): Promise<string> {
+    const res = await fetch(url)
+    const blob = await res.blob()
+    return new Promise(resolve => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(reader.result as string)
+      reader.readAsDataURL(blob)
+    })
+  }
+
   async function runMeshy(url: string) {
     const key = import.meta.env.VITE_MESHY_API_KEY
     if (!key || key.startsWith('your_')) return
     setMeshyLoading(true)
     setMeshyMessage('GENERATING 3D MODEL...')
     try {
-      const taskId = await createImageTo3DTask(url)
+      const base64 = await toBase64(url)  // convert cloudinary URL → base64
+      const taskId = await createImageTo3DTask(base64)  // pass base64 instead
       const glbUrl = await pollTask(taskId, pct => {
         setMeshyMessage(`GENERATING 3D MODEL... ${pct}%`)
       })
-      setMeshyModelUrl(glbUrl)
+      const proxiedUrl = glbUrl.replace('https://assets.meshy.ai', '/meshy-assets')
+      setMeshyModelUrl(proxiedUrl)
     } catch (err) {
       console.error('[AeroMaxx] Meshy failed:', err)
     } finally {

@@ -6,9 +6,6 @@ export default defineConfig({
   plugins: [
     react(),
     {
-      // @mediapipe/tasks-vision ships without its .map files.
-      // enforce:'pre' ensures this load hook runs before Vite's own file reader,
-      // so extractSourcemapFromFile never sees the sourceMappingURL comment.
       name: 'mediapipe-sourcemap-fix',
       enforce: 'pre',
       load(id) {
@@ -29,5 +26,14 @@ export default defineConfig({
   ],
   optimizeDeps: {
     exclude: ['@mediapipe/tasks-vision'],
+  },
+  server: {
+    proxy: {
+      '/meshy-assets': {
+        target: 'https://assets.meshy.ai',
+        changeOrigin: true,
+        rewrite: path => path.replace(/^\/meshy-assets/, ''),
+      },
+    },
   },
 })
