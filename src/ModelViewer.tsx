@@ -300,20 +300,21 @@ function ColorScaleBar() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', userSelect: 'none' }}>
       <div style={{
-        fontFamily: 'var(--mono)', fontSize: 7, color: '#888', letterSpacing: 1,
-        marginBottom: 5, whiteSpace: 'nowrap',
+        fontFamily: 'var(--mono)', fontSize: 9, color: '#aaa', letterSpacing: 0.5,
+        marginBottom: 6, whiteSpace: 'nowrap',
         writingMode: 'vertical-lr', transform: 'rotate(180deg)',
       }}>
         High pressure
       </div>
       <div style={{
-        width: 11, height: 140,
+        width: 16, height: 220,
         background: 'linear-gradient(to bottom, #ff0000, #ff8800, #ffff00, #00cc66, #0066ff, #0000cc)',
-        border: '1px solid #2a2a2a',
+        border: '1px solid #3a3a3a',
+        borderRadius: 2,
       }} />
       <div style={{
-        fontFamily: 'var(--mono)', fontSize: 7, color: '#888', letterSpacing: 1,
-        marginTop: 5, whiteSpace: 'nowrap',
+        fontFamily: 'var(--mono)', fontSize: 9, color: '#aaa', letterSpacing: 0.5,
+        marginTop: 6, whiteSpace: 'nowrap',
         writingMode: 'vertical-lr',
       }}>
         Low pressure
