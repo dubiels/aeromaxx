@@ -23,7 +23,8 @@ const CFD_FRAG = /* glsl */`
 
   void main() {
     vec3 windDir = normalize(vec3(0.0, 0.0, -1.0));
-    float pressure = dot(vNormal, windDir);
+    // Negate so front-facing (stagnation) = high pressure = red/orange
+    float pressure = -dot(vNormal, windDir);
 
     vec3 color;
     if (pressure > 0.6) {
@@ -51,12 +52,13 @@ interface ModelViewerProps {
   loadingMessage: string
 }
 
-// One streamline: a polyline whose head advances each frame, dragging a fading trail
 interface StreamData {
   line: THREE.Line
   geo: THREE.BufferGeometry
-  posArr: Float32Array  // TRAIL_LENGTH * 3 — index 0 = tail, last = head
-  colArr: Float32Array  // TRAIL_LENGTH * 3
+  posArr:   Float32Array  // TRAIL_LENGTH * 3
+  colArr:   Float32Array  // TRAIL_LENGTH * 3
+  eDistArr: Float32Array  // TRAIL_LENGTH — body ellipsoid distance per vertex
+  nzArr:    Float32Array  // TRAIL_LENGTH — normalized Z (pressure proxy) per vertex
   headX: number
   headY: number
   headZ: number
@@ -81,12 +83,12 @@ interface ViewerState {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const TRAIL_LENGTH = 50   // vertices per streamline
-const NUM_STREAMS  = 280
-const WIND_SPEED   = 0.022
-const BODY_RX = 0.58
-const BODY_RY = 0.58
-const BODY_RZ = 0.65
+const TRAIL_LENGTH    = 50
+const NUM_STREAMS     = 280
+const WIND_SPEED      = 0.022
+const BODY_RX         = 0.58
+const BODY_RY         = 0.58
+const BODY_RZ         = 0.65
 const DEFLECT_FORCE   = 0.028
 const LATERAL_DAMPING = 0.90
 
@@ -107,30 +109,56 @@ function applyShader(root: THREE.Object3D, mat: THREE.ShaderMaterial) {
   })
 }
 
-// Height-based base color (cyan→green) tinted yellow at high lateral speed
-function headColor(normY: number, speed: number): [number, number, number] {
-  const t = Math.max(0, Math.min(1, normY))
-  let r = (0x4f + (0x00 - 0x4f) * t) / 255
-  let g = (0xc3 + (0xff - 0xc3) * t) / 255
-  let b = (0xf7 + (0x88 - 0xf7) * t) / 255
-  const s = Math.min(1, speed * 9)
-  r = r + (1.0 - r) * s * 0.55
-  g = g + (0.88 - g) * s * 0.30
-  b = b * (1 - s * 0.75)
-  return [r, g, b]
+// Per-vertex color: undisturbed cyan/green blended toward CFD pressure
+// color as proximity to body increases. Matches the model surface shader exactly.
+function vertexColor(normY: number, eDist: number, nz: number): [number, number, number] {
+  // Undisturbed base: cyan (#4fc3f7) → green (#00ff88) by height
+  const t  = Math.max(0, Math.min(1, normY))
+  const br = (0x4f + (0x00 - 0x4f) * t) / 255
+  const bg = (0xc3 + (0xff - 0xc3) * t) / 255
+  const bb = (0xf7 + (0x88 - 0xf7) * t) / 255
+
+  // Blend factor: 0 = undisturbed, 1 = fully in body's pressure field
+  const blend = Math.max(0, Math.min(1, (1.6 - eDist) / 1.1))
+  if (blend < 0.01) return [br, bg, bb]
+
+  // Pressure color matching fixed CFD shader (nz acts as the pressure proxy)
+  const p = nz * 1.1
+  let pr: number, pg: number, pb: number
+  if (p > 0.6) {
+    const s = (p - 0.6) / 0.4
+    pr = 1.0; pg = 0.5 - 0.5 * s; pb = 0.0           // orange→red
+  } else if (p > 0.2) {
+    const s = (p - 0.2) / 0.4
+    pr = 1.0; pg = 1.0 - 0.5 * s; pb = 0.0           // yellow→orange
+  } else if (p > -0.2) {
+    const s = (p + 0.2) / 0.4
+    pr = s * 0.1; pg = 0.8 + 0.2 * s; pb = 0.4 * (1 - s)  // green
+  } else if (p > -0.6) {
+    const s = (p + 0.6) / 0.4
+    pr = 0.0; pg = s * 0.5; pb = 0.5 + s * 0.3       // blue→teal
+  } else {
+    pr = 0.0; pg = 0.0; pb = 0.8                      // deep blue (wake)
+  }
+
+  return [
+    br + (pr - br) * blend,
+    bg + (pg - bg) * blend,
+    bb + (pb - bb) * blend,
+  ]
 }
 
 function initTrail(sd: StreamData) {
-  // Spread the initial trail along the upstream wind direction
   for (let j = 0; j < TRAIL_LENGTH; j++) {
     sd.posArr[j * 3]     = sd.headX
     sd.posArr[j * 3 + 1] = sd.headY
-    // tail at higher Z (upstream), head at headZ
     sd.posArr[j * 3 + 2] = sd.headZ + (TRAIL_LENGTH - 1 - j) * WIND_SPEED
+    sd.eDistArr[j] = 10.0   // far from body = undisturbed color
+    sd.nzArr[j]    = 1.0    // upstream
   }
   sd.colArr.fill(0)
   sd.geo.attributes.position.needsUpdate = true
-  sd.geo.attributes.color.needsUpdate = true
+  sd.geo.attributes.color.needsUpdate    = true
 }
 
 function spawnStreams(
@@ -141,12 +169,10 @@ function spawnStreams(
 ): StreamData[] {
   const streams: StreamData[] = []
   for (let i = 0; i < NUM_STREAMS; i++) {
-    const startX = (Math.random() - 0.5) * size.x * 2.5 + center.x
-    const startY = (Math.random() - 0.5) * size.y * 1.3 + center.y
-    const startZ = Math.random() * size.z * 3 + center.z + size.z
-
-    const posArr = new Float32Array(TRAIL_LENGTH * 3)
-    const colArr = new Float32Array(TRAIL_LENGTH * 3)
+    const posArr   = new Float32Array(TRAIL_LENGTH * 3)
+    const colArr   = new Float32Array(TRAIL_LENGTH * 3)
+    const eDistArr = new Float32Array(TRAIL_LENGTH)
+    const nzArr    = new Float32Array(TRAIL_LENGTH)
 
     const geo = new THREE.BufferGeometry()
     geo.setAttribute('position', new THREE.BufferAttribute(posArr, 3))
@@ -156,8 +182,10 @@ function spawnStreams(
     scene.add(line)
 
     const sd: StreamData = {
-      line, geo, posArr, colArr,
-      headX: startX, headY: startY, headZ: startZ,
+      line, geo, posArr, colArr, eDistArr, nzArr,
+      headX: (Math.random() - 0.5) * size.x * 2.5 + center.x,
+      headY: (Math.random() - 0.5) * size.y * 1.3 + center.y,
+      headZ: Math.random() * size.z * 3 + center.z + size.z,
       vx: 0, vy: 0,
     }
     initTrail(sd)
@@ -175,7 +203,7 @@ function clearModel(state: ViewerState) {
     state.scene.remove(sd.line)
     sd.geo.dispose()
   }
-  state.streams = []
+  state.streams   = []
   state.cdMaterials = []
 }
 
@@ -250,10 +278,10 @@ function ColorScaleBar() {
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function ModelViewer({ modelUrl, cdValue, loading, loadingMessage }: ModelViewerProps) {
-  const mountRef    = useRef<HTMLDivElement>(null)
-  const stateRef    = useRef<ViewerState | null>(null)
-  const cdRef       = useRef(cdValue)
-  const loadIdRef   = useRef(0)
+  const mountRef     = useRef<HTMLDivElement>(null)
+  const stateRef     = useRef<ViewerState | null>(null)
+  const cdRef        = useRef(cdValue)
+  const loadIdRef    = useRef(0)
   const activeUrlRef = useRef<string | null>(null)
 
   useEffect(() => { cdRef.current = cdValue }, [cdValue])
@@ -269,14 +297,14 @@ export default function ModelViewer({ modelUrl, cdValue, loading, loadingMessage
     renderer.setClearColor(0x080808)
     mount.appendChild(renderer.domElement)
 
-    const scene = new THREE.Scene()
+    const scene  = new THREE.Scene()
     const camera = new THREE.PerspectiveCamera(50, mount.clientWidth / mount.clientHeight, 0.01, 500)
     camera.position.set(0, 0, 5)
 
     const controls = new OrbitControls(camera, renderer.domElement)
-    controls.enableDamping  = true
-    controls.dampingFactor  = 0.06
-    controls.autoRotate     = true
+    controls.enableDamping   = true
+    controls.dampingFactor   = 0.06
+    controls.autoRotate      = true
     controls.autoRotateSpeed = 0.7
 
     scene.add(new THREE.AmbientLight(0xffffff, 0.04))
@@ -286,7 +314,6 @@ export default function ModelViewer({ modelUrl, cdValue, loading, loadingMessage
     const gltfLoader = new GLTFLoader()
     gltfLoader.setDRACOLoader(dracoLoader)
 
-    // Shared material for all streamlines
     const streamMat = new THREE.LineBasicMaterial({ vertexColors: true, depthWrite: false })
 
     const state: ViewerState = {
@@ -315,19 +342,21 @@ export default function ModelViewer({ modelUrl, cdValue, loading, loadingMessage
       const hz = size.z * BODY_RZ
 
       for (const sd of streams) {
-        // ── Advance head ────────────────────────────────────────
+        // ── Advance head ────────────────────────────────────────────
         sd.headZ -= WIND_SPEED
         sd.headX += sd.vx
         sd.headY += sd.vy
 
-        // ── Ellipsoid deflection (no raycasting needed) ─────────
+        // ── Ellipsoid proximity & deflection ────────────────────────
         const dx = sd.headX - center.x
         const dy = sd.headY - center.y
         const dz = sd.headZ - center.z
-        const nx = dx / hx
-        const ny = dy / hy
-        const nz = dz / hz
-        const eDist = Math.sqrt(nx * nx + ny * ny + nz * nz)
+        const enx = dx / hx
+        const eny = dy / hy
+        const enz = dz / hz
+        const eDist = Math.sqrt(enx * enx + eny * eny + enz * enz)
+        // nz is the normalized Z component: >0 = upstream, <0 = downstream (wake)
+        const nz = enz
 
         if (eDist < 1.0 && nz > -0.3) {
           const strength = (1.0 - eDist) * DEFLECT_FORCE
@@ -343,31 +372,34 @@ export default function ModelViewer({ modelUrl, cdValue, loading, loadingMessage
         sd.vx *= LATERAL_DAMPING
         sd.vy *= LATERAL_DAMPING
 
-        // ── Shift trail: drop tail, append new head ─────────────
-        // copyWithin shifts existing vertices one slot toward the tail
+        // ── Shift trail arrays, append new head ─────────────────────
         sd.posArr.copyWithin(0, 3)
-        const last = (TRAIL_LENGTH - 1) * 3
-        sd.posArr[last]     = sd.headX
-        sd.posArr[last + 1] = sd.headY
-        sd.posArr[last + 2] = sd.headZ
+        sd.eDistArr.copyWithin(0, 1)
+        sd.nzArr.copyWithin(0, 1)
 
-        // ── Update vertex colors (fade tail→head, tint by speed) ─
-        const speed = Math.sqrt(sd.vx * sd.vx + sd.vy * sd.vy)
-        const normY = Math.max(0, Math.min(1,
-          (sd.headY - center.y + size.y * 0.65) / (size.y * 1.3)
-        ))
-        const [hr, hg, hb] = headColor(normY, speed)
+        const last3 = (TRAIL_LENGTH - 1) * 3
+        sd.posArr[last3]     = sd.headX
+        sd.posArr[last3 + 1] = sd.headY
+        sd.posArr[last3 + 2] = sd.headZ
+        sd.eDistArr[TRAIL_LENGTH - 1] = eDist
+        sd.nzArr[TRAIL_LENGTH - 1]    = nz
+
+        // ── Per-vertex color: historical pressure × fade ─────────────
         for (let j = 0; j < TRAIL_LENGTH; j++) {
+          const normY = Math.max(0, Math.min(1,
+            (sd.posArr[j * 3 + 1] - center.y + size.y * 0.65) / (size.y * 1.3)
+          ))
+          const [r, g, b] = vertexColor(normY, sd.eDistArr[j], sd.nzArr[j])
           const brightness = Math.pow((j + 1) / TRAIL_LENGTH, 0.5)
-          sd.colArr[j * 3]     = hr * brightness
-          sd.colArr[j * 3 + 1] = hg * brightness
-          sd.colArr[j * 3 + 2] = hb * brightness
+          sd.colArr[j * 3]     = r * brightness
+          sd.colArr[j * 3 + 1] = g * brightness
+          sd.colArr[j * 3 + 2] = b * brightness
         }
 
         sd.geo.attributes.position.needsUpdate = true
         sd.geo.attributes.color.needsUpdate    = true
 
-        // ── Reset when head exits the back of the volume ─────────
+        // ── Reset when head exits the back of volume ─────────────────
         if (sd.headZ < center.z - size.z * 1.5) {
           sd.headX = (Math.random() - 0.5) * size.x * 2.5 + center.x
           sd.headY = (Math.random() - 0.5) * size.y * 1.3 + center.y
@@ -382,7 +414,6 @@ export default function ModelViewer({ modelUrl, cdValue, loading, loadingMessage
     }
     animate()
 
-    // Load default model on startup
     const defaultUrl = '/default-human2.glb'
     activeUrlRef.current = defaultUrl
     loadIdRef.current++
@@ -443,7 +474,6 @@ export default function ModelViewer({ modelUrl, cdValue, loading, loadingMessage
     <div style={{ position: 'relative', width: '100%', height: '100%', background: '#080808' }}>
       <div ref={mountRef} style={{ width: '100%', height: '100%' }} />
 
-      {/* Pressure color scale — bottom-right corner */}
       <div style={{
         position: 'absolute', right: 18, bottom: 24,
         display: 'flex', flexDirection: 'column', alignItems: 'center',
@@ -451,7 +481,6 @@ export default function ModelViewer({ modelUrl, cdValue, loading, loadingMessage
         <ColorScaleBar />
       </div>
 
-      {/* Loading overlay */}
       {loading && (
         <div style={{
           position: 'absolute', inset: 0,
