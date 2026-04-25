@@ -51,6 +51,12 @@ interface ModelViewerProps {
   loadingMessage: string
 }
 
+interface ArrowData {
+  helper: THREE.ArrowHelper
+  vx: number
+  vy: number
+}
+
 interface ViewerState {
   renderer: THREE.WebGLRenderer
   scene: THREE.Scene
@@ -58,7 +64,7 @@ interface ViewerState {
   controls: OrbitControls
   loader: GLTFLoader
   currentModel: THREE.Group | null
-  arrows: THREE.ArrowHelper[]
+  arrowData: ArrowData[]
   animId: number
   cdMaterials: THREE.ShaderMaterial[]
   center: THREE.Vector3
@@ -86,8 +92,8 @@ function spawnArrows(
   scene: THREE.Scene,
   center: THREE.Vector3,
   size: THREE.Vector3
-): THREE.ArrowHelper[] {
-  const arrows: THREE.ArrowHelper[] = []
+): ArrowData[] {
+  const arrowData: ArrowData[] = []
   const dir = new THREE.Vector3(0, 0, -1)
   const len = Math.max(size.x, size.y) * 0.11
 
@@ -105,9 +111,9 @@ function spawnArrows(
     ;(arrow.cone.material as THREE.MeshBasicMaterial).transparent = true
     ;(arrow.cone.material as THREE.MeshBasicMaterial).opacity = 0.45
     scene.add(arrow)
-    arrows.push(arrow)
+    arrowData.push({ helper: arrow, vx: 0, vy: 0 })
   }
-  return arrows
+  return arrowData
 }
 
 function clearModel(state: ViewerState) {
@@ -115,13 +121,12 @@ function clearModel(state: ViewerState) {
     state.scene.remove(state.currentModel)
     state.currentModel = null
   }
-  for (const a of state.arrows) state.scene.remove(a)
-  state.arrows = []
+  for (const ad of state.arrowData) state.scene.remove(ad.helper)
+  state.arrowData = []
   state.cdMaterials = []
 }
 
 function setupModel(model: THREE.Group, state: ViewerState, cdValue: number) {
-  // Fit to ~2 units tall, centered at origin
   const box = new THREE.Box3().setFromObject(model)
   const sz = new THREE.Vector3()
   const ctr = new THREE.Vector3()
@@ -148,7 +153,7 @@ function setupModel(model: THREE.Group, state: ViewerState, cdValue: number) {
   state.camera.lookAt(state.center)
   state.controls.target.copy(state.center)
 
-  state.arrows = spawnArrows(state.scene, state.center, state.size)
+  state.arrowData = spawnArrows(state.scene, state.center, state.size)
 }
 
 function loadFallback(state: ViewerState, cdValue: number) {
@@ -162,7 +167,7 @@ function loadFallback(state: ViewerState, cdValue: number) {
   state.size.set(0.9, 1.75, 0.9)
   state.scene.add(group)
   state.currentModel = group
-  state.arrows = spawnArrows(state.scene, state.center, state.size)
+  state.arrowData = spawnArrows(state.scene, state.center, state.size)
 }
 
 // ─── Color scale bar overlay ─────────────────────────────────────────────────
@@ -194,6 +199,15 @@ function ColorScaleBar() {
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
+
+// Ellipsoid half-axes as fraction of body size
+const BODY_RX = 0.58   // X half-axis (shoulder width radius)
+const BODY_RY = 0.58   // Y half-axis (height radius)
+const BODY_RZ = 0.65   // Z half-axis (depth radius, slightly larger for bow wave)
+const WIND_SPEED = 0.022
+const DEFLECT_FORCE = 0.028
+const LATERAL_DAMPING = 0.90
+const RESET_DIR = new THREE.Vector3(0, 0, -1)
 
 export default function ModelViewer({ modelUrl, cdValue, loading, loadingMessage }: ModelViewerProps) {
   const mountRef = useRef<HTMLDivElement>(null)
@@ -234,7 +248,8 @@ export default function ModelViewer({ modelUrl, cdValue, loading, loadingMessage
 
     const state: ViewerState = {
       renderer, scene, camera, controls, loader: gltfLoader,
-      currentModel: null, arrows: [], animId: 0, cdMaterials: [],
+      currentModel: null, arrowData: [],
+      animId: 0, cdMaterials: [],
       center: new THREE.Vector3(), size: new THREE.Vector3(1, 2, 1),
     }
     stateRef.current = state
@@ -247,17 +262,63 @@ export default function ModelViewer({ modelUrl, cdValue, loading, loadingMessage
     })
     ro.observe(mount)
 
+    const _tmpDir = new THREE.Vector3()
+
     const animate = () => {
       state.animId = requestAnimationFrame(animate)
       controls.update()
-      for (const a of state.arrows) {
-        a.position.z -= 0.022
-        if (a.position.z < state.center.z - state.size.z * 1.5) {
-          a.position.z = state.center.z + state.size.z * 1.5
-          a.position.x = (Math.random() - 0.5) * state.size.x * 2.5 + state.center.x
-          a.position.y = (Math.random() - 0.5) * state.size.y * 1.3 + state.center.y
+
+      const { arrowData, center, size } = state
+      // Half-axes of the deflection ellipsoid in world units
+      const hx = size.x * BODY_RX
+      const hy = size.y * BODY_RY
+      const hz = size.z * BODY_RZ
+
+      for (const ad of arrowData) {
+        const pos = ad.helper.position
+
+        pos.z -= WIND_SPEED
+
+        // Normalized position inside the deflection ellipsoid (0 = surface, <0 = inside)
+        const nx = (pos.x - center.x) / hx
+        const ny = (pos.y - center.y) / hy
+        const nz = (pos.z - center.z) / hz
+        const ellipsoidDist = Math.sqrt(nx * nx + ny * ny + nz * nz)
+
+        // Deflect if inside the ellipsoid AND arrow is still on the upstream half
+        // (nz > 0 means the arrow is in front of the body center)
+        if (ellipsoidDist < 1.0 && nz > -0.3) {
+          const strength = (1.0 - ellipsoidDist) * DEFLECT_FORCE
+          const dx = pos.x - center.x
+          const dy = pos.y - center.y
+          const lateralLen = Math.sqrt(dx * dx + dy * dy)
+          if (lateralLen > 0.001) {
+            ad.vx += (dx / lateralLen) * strength
+            ad.vy += (dy / lateralLen) * strength
+          } else {
+            // Arrow dead-center: ride over the top
+            ad.vy += strength
+          }
+        }
+
+        pos.x += ad.vx
+        pos.y += ad.vy
+        ad.vx *= LATERAL_DAMPING
+        ad.vy *= LATERAL_DAMPING
+
+        _tmpDir.set(ad.vx, ad.vy, -WIND_SPEED).normalize()
+        ad.helper.setDirection(_tmpDir)
+
+        if (pos.z < center.z - size.z * 1.5) {
+          pos.z = center.z + size.z * 1.5
+          pos.x = (Math.random() - 0.5) * size.x * 2.5 + center.x
+          pos.y = (Math.random() - 0.5) * size.y * 1.3 + center.y
+          ad.vx = 0
+          ad.vy = 0
+          ad.helper.setDirection(RESET_DIR)
         }
       }
+
       renderer.render(scene, camera)
     }
     animate()
