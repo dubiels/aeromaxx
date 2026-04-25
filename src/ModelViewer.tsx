@@ -263,7 +263,7 @@ export default function ModelViewer({ modelUrl, cdValue, loading, loadingMessage
     animate()
 
     // Load default model on startup
-    const defaultUrl = '/default-human.glb'
+    const defaultUrl = '/default-human2.glb'
     activeUrlRef.current = defaultUrl
     loadIdRef.current++
     const myId = loadIdRef.current
@@ -290,7 +290,7 @@ export default function ModelViewer({ modelUrl, cdValue, loading, loadingMessage
   useEffect(() => {
     const state = stateRef.current
     if (!state) return
-    const url = modelUrl ?? '/default-human.glb'
+    const url = modelUrl ?? '/default-human2.glb'
     if (url === activeUrlRef.current) return
     activeUrlRef.current = url
 
