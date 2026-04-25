@@ -47,7 +47,7 @@ LIFETIME IMPACT:
         'Authorization': `Bearer ${import.meta.env.VITE_GEMINI_API_KEY}`,
       },
       body: JSON.stringify({
-        model: 'gemma-4-27b-it',
+        model: 'gemma-4-31b-it',
         messages: [
           {
             role: 'system',

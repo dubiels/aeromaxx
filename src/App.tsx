@@ -89,7 +89,7 @@ const INIT: AnalysisState = {
 function SectionLabel({ n, children }: { n: string; children: React.ReactNode }) {
   return (
     <div style={{
-      fontFamily: 'var(--mono)', fontSize: 9, letterSpacing: 4,
+      fontFamily: 'var(--mono)', fontSize: 10, letterSpacing: 1.5,
       color: '#00ff88', textTransform: 'uppercase',
       marginBottom: 14, paddingBottom: 10, borderBottom: '1px solid #1a1a1a',
     }}>
@@ -127,7 +127,7 @@ function UploadPrompt({ onUpload }: { onUpload: () => void }) {
       }}
     >
       <div style={{
-        fontFamily: 'var(--mono)', fontSize: 10, letterSpacing: 4,
+        fontFamily: 'var(--mono)', fontSize: 11, letterSpacing: 1,
         color: hover ? '#00ff88' : '#3a3a3a', marginBottom: 10,
         textTransform: 'uppercase',
       }}>
@@ -278,14 +278,14 @@ export default function App() {
       <header className="app-header">
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 16 }}>
           <span style={{
-            fontFamily: 'var(--mono)', fontSize: 17, fontWeight: 700,
-            color: '#00ff88', letterSpacing: 5,
+            fontFamily: 'var(--mono)', fontSize: 17, fontWeight: 600,
+            color: '#00ff88', letterSpacing: 2,
           }}>
             AEROMAXX
           </span>
         </div>
         <span style={{
-          fontFamily: 'var(--mono)', fontSize: 9, letterSpacing: 3,
+          fontFamily: 'var(--mono)', fontSize: 10, letterSpacing: 1,
           color: '#2a2a2a', textTransform: 'uppercase',
         }}>
           AERODYNAMIC BODY ANALYSIS SYSTEM V2.1
@@ -323,17 +323,17 @@ export default function App() {
                       src={frontUrl}
                       alt="Subject"
                       style={{
-                        width: '100%', maxHeight: 260, objectFit: 'contain',
+                        width: '100%', maxHeight: 480, objectFit: 'contain',
                         objectPosition: 'top', display: 'block',
                         border: '1px solid #1a1a1a', background: '#0a0a0a',
                       }}
                     />
                     <div style={{
                       position: 'absolute', top: 6, left: 6,
-                      fontFamily: 'var(--mono)', fontSize: 7, letterSpacing: 2,
+                      fontFamily: 'var(--mono)', fontSize: 8, letterSpacing: 0.5,
                       color: '#00ff88', background: 'rgba(8,8,8,0.85)', padding: '2px 5px',
                     }}>
-                      INPUT
+                      Input
                     </div>
                   </div>
 
@@ -343,39 +343,39 @@ export default function App() {
                         src={analysis.annotatedImageUrl}
                         alt="Pose scan"
                         style={{
-                          width: '100%', maxHeight: 260, objectFit: 'contain',
+                          width: '100%', maxHeight: 480, objectFit: 'contain',
                           objectPosition: 'top', display: 'block',
                           border: '1px solid #1a1a1a', background: '#0a0a0a',
                         }}
                       />
                     ) : (
                       <div style={{
-                        width: '100%', height: 160,
+                        width: '100%', height: 300,
                         border: '1px solid #1a1a1a', background: '#0a0a0a',
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                       }}>
                         <span style={{
-                          fontFamily: 'var(--mono)', fontSize: 9, letterSpacing: 3,
+                          fontFamily: 'var(--mono)', fontSize: 10, letterSpacing: 1,
                           color: '#00ff88',
                         }} className="pulse">
-                          SCANNING...
+                          Scanning...
                         </span>
                       </div>
                     )}
                     <div style={{
                       position: 'absolute', top: 6, left: 6,
-                      fontFamily: 'var(--mono)', fontSize: 7, letterSpacing: 2,
+                      fontFamily: 'var(--mono)', fontSize: 8, letterSpacing: 0.5,
                       color: '#00ff88', background: 'rgba(8,8,8,0.85)', padding: '2px 5px',
                     }}>
-                      POSE SCAN
+                      Pose Scan
                     </div>
                   </div>
                 </div>
 
                 {analysis.loading && (
                   <div style={{
-                    fontFamily: 'var(--mono)', fontSize: 10, color: '#00ff88',
-                    letterSpacing: 2, marginTop: 12,
+                    fontFamily: 'var(--mono)', fontSize: 11, color: '#00ff88',
+                    letterSpacing: 0.5, marginTop: 12,
                   }} className="pulse">
                     {analysis.loadingMessage}
                   </div>
@@ -383,9 +383,9 @@ export default function App() {
 
                 {analysis.error && (
                   <div style={{
-                    fontFamily: 'var(--mono)', fontSize: 11, color: '#ef5350',
+                    fontFamily: 'var(--mono)', fontSize: 12, color: '#ef5350',
                     border: '1px solid #ef5350', padding: '10px 14px', marginTop: 12,
-                    letterSpacing: 1,
+                    letterSpacing: 0,
                   }}>
                     ⚠ {analysis.error}
                   </div>
@@ -407,7 +407,6 @@ export default function App() {
             <div className="panel-section">
               <SectionLabel n="02">AERODYNAMIC REPORT</SectionLabel>
 
-              <DataRow label="Assumed Height" value="5′9″  (1.7526 m)" dim />
               <DataRow label="Drag Coefficient (Cd)" value={d.Cd.toFixed(4)} accent />
               <DataRow label="Frontal Area" value={`${d.frontalArea.toFixed(4)} m²`} />
               <DataRow
@@ -451,8 +450,8 @@ export default function App() {
           )}
 
           <div style={{
-            fontFamily: 'var(--mono)', fontSize: 8, color: '#1e1e1e',
-            letterSpacing: 3, textAlign: 'center', paddingTop: 8,
+            fontFamily: 'var(--mono)', fontSize: 9, color: '#1e1e1e',
+            letterSpacing: 1, textAlign: 'center', paddingTop: 8,
           }}>
             AEROMAXX SYSTEMS // BIOMECHANICAL EFFICIENCY DIVISION
           </div>

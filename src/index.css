@@ -14,8 +14,8 @@
   --text: #e8e8e8;
   --text-muted: #666;
   --text-dim: #999;
-  --mono: 'JetBrains Mono', 'Courier New', monospace;
-  --sans: 'Inter', system-ui, sans-serif;
+  --mono: 'Lora', Georgia, 'Times New Roman', serif;
+  --sans: 'Lora', Georgia, 'Times New Roman', serif;
   --blue: #4fc3f7;
   --green-mild: #81c784;
   --orange: #ffb74d;

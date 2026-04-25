@@ -4,6 +4,9 @@ import type { GlbMeasurements } from './types'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js'
+import { Line2 } from 'three/examples/jsm/lines/Line2.js'
+import { LineGeometry } from 'three/examples/jsm/lines/LineGeometry.js'
+import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js'
 
 // ─── CFD shaders ─────────────────────────────────────────────────────────────
 
@@ -54,10 +57,12 @@ interface ModelViewerProps {
 }
 
 interface StreamData {
-  line: THREE.Line
-  geo: THREE.BufferGeometry
-  posArr:   Float32Array  // TRAIL_LENGTH * 3
-  colArr:   Float32Array  // TRAIL_LENGTH * 3
+  line: Line2
+  geo: LineGeometry
+  posArr:    Float32Array  // TRAIL_LENGTH * 3 — working positions
+  colArr:    Float32Array  // TRAIL_LENGTH * 3 — working colors
+  posSegBuf: THREE.InterleavedBuffer  // Line2's internal interleaved position buffer
+  colSegBuf: THREE.InterleavedBuffer  // Line2's internal interleaved color buffer
   eDistArr: Float32Array  // TRAIL_LENGTH — body ellipsoid distance per vertex
   nzArr:    Float32Array  // TRAIL_LENGTH — normalized Z (pressure proxy) per vertex
   headX: number
@@ -75,7 +80,7 @@ interface ViewerState {
   loader: GLTFLoader
   currentModel: THREE.Group | null
   streams: StreamData[]
-  streamMat: THREE.LineBasicMaterial
+  streamMat: LineMaterial
   animId: number
   cdMaterials: THREE.ShaderMaterial[]
   center: THREE.Vector3
@@ -149,22 +154,34 @@ function vertexColor(normY: number, eDist: number, nz: number): [number, number,
   ]
 }
 
+// Sync posArr/colArr into Line2's internal interleaved buffers without allocation.
+// Each segment i needs [start.xyz, end.xyz] = posArr[i*3..i*3+6] (6 floats).
+function syncLine2Buffers(sd: StreamData) {
+  const posArr = sd.posSegBuf.array as Float32Array
+  const colArr = sd.colSegBuf.array as Float32Array
+  for (let i = 0; i < TRAIL_LENGTH - 1; i++) {
+    posArr.set(sd.posArr.subarray(i * 3, i * 3 + 6), i * 6)
+    colArr.set(sd.colArr.subarray(i * 3, i * 3 + 6), i * 6)
+  }
+  sd.posSegBuf.needsUpdate = true
+  sd.colSegBuf.needsUpdate = true
+}
+
 function initTrail(sd: StreamData) {
   for (let j = 0; j < TRAIL_LENGTH; j++) {
     sd.posArr[j * 3]     = sd.headX
     sd.posArr[j * 3 + 1] = sd.headY
     sd.posArr[j * 3 + 2] = sd.headZ + (TRAIL_LENGTH - 1 - j) * WIND_SPEED
-    sd.eDistArr[j] = 10.0   // far from body = undisturbed color
-    sd.nzArr[j]    = 1.0    // upstream
+    sd.eDistArr[j] = 10.0
+    sd.nzArr[j]    = 1.0
   }
   sd.colArr.fill(0)
-  sd.geo.attributes.position.needsUpdate = true
-  sd.geo.attributes.color.needsUpdate    = true
+  syncLine2Buffers(sd)
 }
 
 function spawnStreams(
   scene: THREE.Scene,
-  mat: THREE.LineBasicMaterial,
+  mat: LineMaterial,
   center: THREE.Vector3,
   size: THREE.Vector3,
 ): StreamData[] {
@@ -172,24 +189,35 @@ function spawnStreams(
   for (let i = 0; i < NUM_STREAMS; i++) {
     const posArr   = new Float32Array(TRAIL_LENGTH * 3)
     const colArr   = new Float32Array(TRAIL_LENGTH * 3)
-    const eDistArr = new Float32Array(TRAIL_LENGTH)
-    const nzArr    = new Float32Array(TRAIL_LENGTH)
+    const eDistArr = new Float32Array(TRAIL_LENGTH).fill(10.0)
+    const nzArr    = new Float32Array(TRAIL_LENGTH).fill(1.0)
 
-    const geo = new THREE.BufferGeometry()
-    geo.setAttribute('position', new THREE.BufferAttribute(posArr, 3))
-    geo.setAttribute('color',    new THREE.BufferAttribute(colArr, 3))
+    const headX = (Math.random() - 0.5) * size.x * 2.5 + center.x
+    const headY = (Math.random() - 0.5) * size.y * 1.3 + center.y
+    const headZ = Math.random() * size.z * 3 + center.z + size.z
+    for (let j = 0; j < TRAIL_LENGTH; j++) {
+      posArr[j * 3]     = headX
+      posArr[j * 3 + 1] = headY
+      posArr[j * 3 + 2] = headZ + (TRAIL_LENGTH - 1 - j) * WIND_SPEED
+    }
 
-    const line = new THREE.Line(geo, mat)
+    const geo = new LineGeometry()
+    geo.setPositions(posArr)
+    geo.setColors(colArr)
+
+    // Grab the underlying interleaved buffers for zero-alloc per-frame updates
+    const posSegBuf = (geo.getAttribute('instanceStart') as THREE.InterleavedBufferAttribute).data as THREE.InterleavedBuffer
+    const colSegBuf = (geo.getAttribute('instanceColorStart') as THREE.InterleavedBufferAttribute).data as THREE.InterleavedBuffer
+
+    const line = new Line2(geo, mat)
+    line.frustumCulled = false
+    line.computeLineDistances()
     scene.add(line)
 
     const sd: StreamData = {
-      line, geo, posArr, colArr, eDistArr, nzArr,
-      headX: (Math.random() - 0.5) * size.x * 2.5 + center.x,
-      headY: (Math.random() - 0.5) * size.y * 1.3 + center.y,
-      headZ: Math.random() * size.z * 3 + center.z + size.z,
-      vx: 0, vy: 0,
+      line, geo, posArr, colArr, posSegBuf, colSegBuf,
+      eDistArr, nzArr, headX, headY, headZ, vx: 0, vy: 0,
     }
-    initTrail(sd)
     streams.push(sd)
   }
   return streams
@@ -335,11 +363,14 @@ export default function ModelViewer({ modelUrl, cdValue, loading, loadingMessage
     const gltfLoader = new GLTFLoader()
     gltfLoader.setDRACOLoader(dracoLoader)
 
-    const streamMat = new THREE.LineBasicMaterial({
+    const streamMat = new LineMaterial({
       vertexColors: true,
+      linewidth: 3,
+      worldUnits: false,
       depthWrite: false,
       transparent: true,
       blending: THREE.AdditiveBlending,
+      resolution: new THREE.Vector2(mount.clientWidth, mount.clientHeight),
     })
 
     const state: ViewerState = {
@@ -355,6 +386,7 @@ export default function ModelViewer({ modelUrl, cdValue, loading, loadingMessage
       camera.aspect = w / h
       camera.updateProjectionMatrix()
       renderer.setSize(w, h)
+      state.streamMat.resolution.set(w, h)
     })
     ro.observe(mount)
 
@@ -424,8 +456,7 @@ export default function ModelViewer({ modelUrl, cdValue, loading, loadingMessage
           sd.colArr[j * 3 + 2] = b * brightness
         }
 
-        sd.geo.attributes.position.needsUpdate = true
-        sd.geo.attributes.color.needsUpdate    = true
+        syncLine2Buffers(sd)
 
         // ── Reset when head exits the back of volume ─────────────────
         if (sd.headZ < center.z - size.z * 1.5) {
