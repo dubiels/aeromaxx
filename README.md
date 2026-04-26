@@ -92,7 +92,9 @@ The vertex shader computes `vWorldNormal = normalize(mat3(modelMatrix) * normal)
 
 ### 2. User uploads a photo → Cloudinary
 
-The Cloudinary Upload Widget opens. On success it returns a `secure_url` — a Cloudinary-hosted image URL. Simultaneously two async pipelines fire.
+The Cloudinary Upload Widget (loaded via CDN script tag) handles all media ingestion — supporting local file upload and direct camera capture. On success, it returns a secure_url — a Cloudinary-hosted, CDN-distributed image URL that becomes the single source of truth for that subject throughout the entire pipeline.
+
+That URL does a lot of work: it's passed directly to MediaPipe for pose landmark inference, submitted to Meshy as the source image for 3D reconstruction, stored in the database as the canonical subject record, and rendered in the leaderboard alongside each entry's Cd score. Every subsequent analysis step — whether a fresh run or a leaderboard reload months later — pulls from the same persistent Cloudinary URL. Simultaneously, two async analysis pipelines fire.
 
 ---
 
