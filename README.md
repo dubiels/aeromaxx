@@ -1,7 +1,6 @@
 # AeroMaxx
-<hr>
 <img width="960" height="520" alt="demo" src="https://github.com/user-attachments/assets/e7744876-bd83-4c80-b985-88cbf23d6f94" />
-
+<hr>
 
 ## What is this?
 
@@ -151,8 +150,6 @@ POSTs to `https://generativelanguage.googleapis.com/v1beta/openai/chat/completio
 ---
 
 ### 7. Leaderboard
-
-<img width="500" src="https://i.imgur.com/fO2StlW.gif">
 <br><i>Clicking on the leaderboard pulls up that user's profile and 3D model</i>
 <br><br>
 
