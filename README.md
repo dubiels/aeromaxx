@@ -1,5 +1,6 @@
 # AeroMaxx
 <hr>
+<img src="public/medium-quality-aeromaxx-gif.gif" width="700" alt="Aeromaxx demo gif" />
 
 ## What is this?
 
