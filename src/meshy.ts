@@ -12,6 +12,32 @@ interface MeshyTask {
   status: 'PENDING' | 'IN_PROGRESS' | 'SUCCEEDED' | 'FAILED' | 'EXPIRED'
   model_urls?: { glb?: string }
   progress?: number
+  created_at?: number  // unix ms
+}
+
+export interface MeshyListItem {
+  id: string
+  glbUrl: string
+  createdAt: number
+}
+
+export async function listSucceededTasks(): Promise<MeshyListItem[]> {
+  const results: MeshyListItem[] = []
+  for (let page = 1; page <= 5; page++) {
+    const res = await fetch(
+      `${BASE}/openapi/v1/image-to-3d?page_num=${page}&page_size=24&sort_by=-created_at`,
+      { headers: headers() }
+    )
+    if (!res.ok) break
+    const data: MeshyTask[] = await res.json()
+    if (!data.length) break
+    for (const t of data) {
+      if (t.status === 'SUCCEEDED' && t.model_urls?.glb) {
+        results.push({ id: t.id, glbUrl: t.model_urls.glb, createdAt: t.created_at ?? 0 })
+      }
+    }
+  }
+  return results
 }
 
 export async function createImageTo3DTask(imageUrl: string): Promise<string> {
