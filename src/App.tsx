@@ -105,16 +105,62 @@ function SectionLabel({ n, children }: { n: string; children: React.ReactNode })
   )
 }
 
-function DataRow({ label, value, accent, dim }: { label: string; value: string; accent?: boolean; dim?: boolean }) {
+function renderTooltip(text: string): React.ReactNode {
+  return text.split('\n').map((line, i) => {
+    if (line === '') return <div key={i} style={{ height: '0.55em' }} />
+    const parts = line.split(/(\[m\][^[]*\[\/m\]|\[c\][^[]*\[\/c\])/)
+    return (
+      <div key={i}>
+        {parts.map((p, j) => {
+          if (p.startsWith('[m]') && p.endsWith('[/m]'))
+            return <span key={j} style={{ color: 'var(--green)' }}>{p.slice(3, -4)}</span>
+          if (p.startsWith('[c]') && p.endsWith('[/c]'))
+            return <span key={j} style={{ color: '#c87533' }}>{p.slice(3, -4)}</span>
+          return <span key={j}>{p}</span>
+        })}
+      </div>
+    )
+  })
+}
+
+function DataRow({ label, value, accent, dim, tooltip }: {
+  label: string; value: string; accent?: boolean; dim?: boolean; tooltip?: string
+}) {
+  const [open, setOpen] = useState(false)
   return (
-    <div style={{
-      display: 'flex', justifyContent: 'space-between', gap: 8,
-      fontFamily: 'var(--mono)', fontSize: 12, lineHeight: 2.1,
-    }}>
-      <span style={{ color: dim ? '#777' : '#aaa' }}>{label}</span>
-      <span style={{ color: accent ? '#ffffff' : dim ? '#888' : 'var(--green)', fontWeight: accent ? 700 : 400, textAlign: 'right' }}>
-        {value}
-      </span>
+    <div>
+      <div style={{
+        display: 'flex', justifyContent: 'space-between', gap: 8,
+        fontFamily: 'var(--mono)', fontSize: 12, lineHeight: 2.1,
+      }}>
+        <span style={{ color: dim ? '#777' : '#aaa', display: 'flex', alignItems: 'center', gap: 5 }}>
+          {label}
+          {tooltip && (
+            <button
+              onClick={() => setOpen(o => !o)}
+              style={{
+                background: 'none', border: 'none', cursor: 'pointer', padding: 0,
+                fontFamily: 'var(--mono)', fontSize: 12, lineHeight: 1,
+                color: open ? 'var(--green)' : '#3a3a3a',
+                transition: 'color 0.1s',
+              }}
+            >↴</button>
+          )}
+        </span>
+        <span style={{ color: accent ? '#ffffff' : dim ? '#888' : 'var(--green)', fontWeight: accent ? 700 : 400, textAlign: 'right' }}>
+          {value}
+        </span>
+      </div>
+      {open && tooltip && (
+        <div style={{
+          background: '#0d0d0d', borderLeft: '2px solid #252525',
+          padding: '9px 12px', marginBottom: 2,
+          fontFamily: 'var(--mono)', fontSize: 10, color: '#777',
+          lineHeight: 1.9,
+        }}>
+          {renderTooltip(tooltip)}
+        </div>
+      )}
     </div>
   )
 }
@@ -799,8 +845,52 @@ export default function App() {
             <div className="panel-section">
               <SectionLabel n="2">AERODYNAMIC REPORT</SectionLabel>
 
-              <DataRow label="Drag Coefficient (Cd)" value={d.Cd.toFixed(4)} accent />
-              <DataRow label="Frontal Area" value={`${d.frontalArea.toFixed(4)} m²`} />
+              <DataRow
+                label="Drag Coefficient (Cd)" value={d.Cd.toFixed(4)} accent
+                tooltip={[
+                  `Cd = [c]0.80[/c] base + [m]postural penalty[/m]${glb ? ` + [m]depth correction[/m]` : ''}`,
+                  ``,
+                  `base [c]0.80[/c]  — Hoerner (1965), Shanebrook & Jaszczak (1976)`,
+                  `  published range for standing adult: 0.7 – 1.3`,
+                  ``,
+                  `hunch: [m]${m.hunchScore.toFixed(3)}[/m] × [c]0.08[/c] = +[m]${(m.hunchScore * 0.08).toFixed(4)}[/m] Cd`,
+                  `  [c]0.08[/c] Cd/unit — conservative (published studies: 5–15%)`,
+                  ...(m.shoulderToHipRatio > 1.3
+                    ? [``, `s/h ratio [m]${m.shoulderToHipRatio.toFixed(3)}[/m] > [c]1.3[/c] → [c]+0.03[/c] Cd — lateral sway penalty`]
+                    : m.shoulderToHipRatio < 0.9
+                    ? [``, `s/h ratio [m]${m.shoulderToHipRatio.toFixed(3)}[/m] < [c]0.9[/c] → [c]+0.04[/c] Cd — lateral sway penalty`]
+                    : []),
+                  ...(glb
+                    ? [``,
+                       `depth/width [m]${glb.depthToWidthRatio.toFixed(3)}[/m]:`,
+                       glb.depthToWidthRatio < 0.35
+                         ? `  flat-body penalty: ([c]0.35[/c]−[m]${glb.depthToWidthRatio.toFixed(3)}[/m])×[c]0.40[/c] = +[m]${((0.35-glb.depthToWidthRatio)*0.40).toFixed(4)}[/m]`
+                         : glb.depthToWidthRatio > 0.70
+                         ? `  deep-body penalty: ([m]${glb.depthToWidthRatio.toFixed(3)}[/m]−[c]0.70[/c])×[c]0.20[/c] = +[m]${((glb.depthToWidthRatio-0.70)*0.20).toFixed(4)}[/m]`
+                         : `  within optimal range [c]0.35–0.70[/c] → no correction`]
+                    : [`  (no 3D model — depth correction not applied)`]),
+                  ``,
+                  `→ Cd = [m]${d.Cd.toFixed(4)}[/m]`,
+                ].join('\n')}
+              />
+              <DataRow
+                label="Frontal Area" value={`${d.frontalArea.toFixed(4)} m²`}
+                tooltip={glb
+                  ? [
+                      `A = [m]realWidth[/m] × [c]height_ref[/c] × [c]fill_factor[/c]`,
+                      `  = [m]${glb.realWidth.toFixed(4)} m[/m] × [c]1.75 m[/c] × [c]0.73[/c] = [m]${d.frontalArea.toFixed(4)} m²[/m]`,
+                      ``,
+                      `[c]1.75 m[/c] — normalized human height (5′9″ reference)`,
+                      `[c]0.73[/c]   — fill factor: Kyle & Burke (1984), range 0.68–0.78`,
+                    ].join('\n')
+                  : [
+                      `A = [m]shoulderWidth[/m] × [c]height_ref[/c] × [c]fill_factor[/c]`,
+                      `  = [m]${m.realShoulderWidth.toFixed(4)} m[/m] × [c]1.75 m[/c] × [c]0.73[/c] = [m]${d.frontalArea.toFixed(4)} m²[/m]`,
+                      ``,
+                      `[c]1.75 m[/c] — normalized human height (5′9″ reference)`,
+                      `[c]0.73[/c]   — fill factor: Kyle & Burke (1984), range 0.68–0.78`,
+                    ].join('\n')}
+              />
               <DataRow
                 label="  └ area source"
                 value={glb ? '3D model' : '2D estimate'}
@@ -809,29 +899,163 @@ export default function App() {
 
               {glb && (
                 <>
-                  <DataRow label="Body Width (3D)" value={`${glb.realWidth.toFixed(3)} m`} />
-                  <DataRow label="Body Depth (3D)" value={`${glb.realDepth.toFixed(3)} m`} />
-                  <DataRow label="Depth/Width Ratio" value={glb.depthToWidthRatio.toFixed(3)} />
+                  <DataRow
+                    label="Body Width (3D)" value={`${glb.realWidth.toFixed(3)} m`}
+                    tooltip={[
+                      `realWidth = ([m]bbox.size.x[/m] / [m]bbox.size.y[/m]) × [c]1.7526[/c]`,
+                      `  [m]bbox[/m]: Three.js Box3.setFromObject() on the loaded GLB`,
+                      `  size.x/size.y = width-to-height ratio of 3D bounding box`,
+                      `  [c]1.7526 m[/c] = standardized height (5′9″)`,
+                      ``,
+                      `→ [m]${glb.realWidth.toFixed(4)} m[/m]`,
+                    ].join('\n')}
+                  />
+                  <DataRow
+                    label="Body Depth (3D)" value={`${glb.realDepth.toFixed(3)} m`}
+                    tooltip={[
+                      `realDepth = ([m]bbox.size.z[/m] / [m]bbox.size.y[/m]) × [c]1.7526[/c]`,
+                      `  size.z = front-to-back extent of 3D bounding box`,
+                      `  [c]1.7526 m[/c] = standardized height (5′9″)`,
+                      ``,
+                      `→ [m]${glb.realDepth.toFixed(4)} m[/m]`,
+                    ].join('\n')}
+                  />
+                  <DataRow
+                    label="Depth/Width Ratio" value={glb.depthToWidthRatio.toFixed(3)}
+                    tooltip={[
+                      `r = [m]realDepth[/m] / [m]realWidth[/m]`,
+                      `  = [m]${glb.realDepth.toFixed(4)}[/m] / [m]${glb.realWidth.toFixed(4)}[/m] = [m]${glb.depthToWidthRatio.toFixed(4)}[/m]`,
+                      ``,
+                      `optimal range: [c]0.35 – 0.70[/c]`,
+                      `  r < [c]0.35[/c] → flat-plate behavior, large separated wake`,
+                      `  r > [c]0.70[/c] → excess depth increases pressure drag`,
+                      `  r ≈ [c]0.50[/c] → minimum wake, best natural streamlining`,
+                      `  penalty model from Hoerner (1965) bluff-body data`,
+                    ].join('\n')}
+                  />
                 </>
               )}
 
-              <DataRow label="Shoulder Width" value={`${m.realShoulderWidth.toFixed(4)} m`} />
-              <DataRow label="Hip Width" value={`${m.realHipWidth.toFixed(4)} m`} />
-              <DataRow label="Hunch Score (0–1)" value={m.hunchScore.toFixed(4)} />
-              <DataRow label="Postural Cd Penalty" value={`+${d.posturalPenalty.toFixed(4)}`} />
-              <DataRow label="Drag Force @ Walk" value={`${d.dragForce.toFixed(4)} N`} />
+              <DataRow
+                label="Shoulder Width" value={`${m.realShoulderWidth.toFixed(4)} m`}
+                tooltip={[
+                  `1. [m]shoulderWidth_px[/m] = dist(landmark 11, 12) = [m]${m.shoulderWidth.toFixed(1)} px[/m]`,
+                  `   MediaPipe PoseLandmarker — dist = √((Δx·W)²+(Δy·H)²)`,
+                  ``,
+                  `2. pixelsPerMeter = [m]bodyHeight_px[/m] / [c]1.7526 m[/c]`,
+                  `   [c]1.7526 m[/c] = standardized reference height (5′9″)`,
+                  `   [m]bodyHeight_px[/m] = dist(nose → ankle midpoint)`,
+                  ``,
+                  `3. realShoulderWidth = [m]${m.shoulderWidth.toFixed(1)} px[/m] / [m]${m.pixelsPerMeter.toFixed(1)} px·m⁻¹[/m]`,
+                  `   = [m]${m.realShoulderWidth.toFixed(4)} m[/m]`,
+                ].join('\n')}
+              />
+              <DataRow
+                label="Hip Width" value={`${m.realHipWidth.toFixed(4)} m`}
+                tooltip={[
+                  `Same pipeline as shoulder width, landmarks 23 & 24 (hips)`,
+                  ``,
+                  `[m]hipWidth_px[/m] = dist(leftHip, rightHip) = [m]${m.hipWidth.toFixed(1)} px[/m]`,
+                  `pixelsPerMeter = [m]${m.pixelsPerMeter.toFixed(1)} px·m⁻¹[/m]`,
+                  `realHipWidth = [m]${m.hipWidth.toFixed(1)}[/m] / [m]${m.pixelsPerMeter.toFixed(1)}[/m] = [m]${m.realHipWidth.toFixed(4)} m[/m]`,
+                ].join('\n')}
+              />
+              <DataRow
+                label="Hunch Score (0–1)" value={m.hunchScore.toFixed(4)}
+                tooltip={[
+                  `hunchScore = |[m]shoulderMidX[/m] − [m]hipMidX[/m]| / ([m]shoulderWidth_px[/m] × [c]0.3[/c])`,
+                  `  clamped to [0, 1]`,
+                  ``,
+                  `[m]shoulderMidX[/m]: midpoint of landmarks 11 & 12`,
+                  `[m]hipMidX[/m]:      midpoint of landmarks 23 & 24`,
+                  `[c]0.3[/c]: offset ≥ 30% of shoulder width → maximal hunch (score = 1)`,
+                  `  captures kyphosis & forward head posture from lateral offset`,
+                  ``,
+                  `→ [m]${m.hunchScore.toFixed(4)}[/m]  (${m.hunchScore < 0.2 ? 'minimal' : m.hunchScore < 0.5 ? 'moderate' : 'significant'} postural asymmetry)`,
+                ].join('\n')}
+              />
+              <DataRow
+                label="Postural Cd Penalty" value={`+${d.posturalPenalty.toFixed(4)}`}
+                tooltip={[
+                  `penalty = hunch_component + asymmetry_component`,
+                  ``,
+                  `hunch: [m]${m.hunchScore.toFixed(4)}[/m] × [c]0.08[/c] = +[m]${(m.hunchScore * 0.08).toFixed(4)}[/m] Cd`,
+                  `  [c]0.08[/c] Cd/unit — mid-range of published 5–15% kyphosis increase`,
+                  ...(m.shoulderToHipRatio > 1.3
+                    ? [``, `s/h [m]${m.shoulderToHipRatio.toFixed(3)}[/m] > [c]1.3[/c] → [c]+0.03[/c] Cd — broad-shoulder lateral sway`]
+                    : m.shoulderToHipRatio < 0.9
+                    ? [``, `s/h [m]${m.shoulderToHipRatio.toFixed(3)}[/m] < [c]0.9[/c] → [c]+0.04[/c] Cd — narrow-shoulder lateral sway`]
+                    : [``, `s/h [m]${m.shoulderToHipRatio.toFixed(3)}[/m] within normal range [c]0.9–1.3[/c]`]),
+                  ``,
+                  `→ total = +[m]${d.posturalPenalty.toFixed(4)}[/m] Cd`,
+                ].join('\n')}
+              />
+              <DataRow
+                label="Drag Force @ Walk" value={`${d.dragForce.toFixed(4)} N`}
+                tooltip={[
+                  `F = ½ × [c]ρ[/c] × [c]v²[/c] × [m]Cd[/m] × [m]A[/m]`,
+                  ``,
+                  `[c]ρ = 1.225 kg·m⁻³[/c]  ISA standard atmosphere, sea level 15°C`,
+                  `[c]v = 1.4 m·s⁻¹[/c]    ACSM avg adult walking speed (range 1.3–1.5)`,
+                  `[m]Cd = ${d.Cd.toFixed(4)}[/m]`,
+                  `[m]A  = ${d.frontalArea.toFixed(4)} m²[/m]`,
+                  ``,
+                  `= 0.5 × [c]1.225[/c] × [c]${(1.4*1.4).toFixed(2)}[/c] × [m]${d.Cd.toFixed(4)}[/m] × [m]${d.frontalArea.toFixed(4)}[/m]`,
+                  `= [m]${d.dragForce.toFixed(4)} N[/m]`,
+                ].join('\n')}
+              />
 
               <div style={{ borderTop: '1px solid #1a1a1a', margin: '8px 0' }} />
-              <DataRow label="Lifetime Energy Lost" value={`${d.lifetimeEnergy.toLocaleString(undefined, { maximumFractionDigits: 0 })} J`} accent />
-              <DataRow label="Energy Wasted" value={`${d.bigMacs.toFixed(1)} Big Macs`} />
-              <DataRow label="Time Lost to Drag" value={`${d.daysLost.toFixed(1)} days of your life`} />
+              <DataRow
+                label="Lifetime Energy Lost" value={`${d.lifetimeEnergy.toLocaleString(undefined, { maximumFractionDigits: 0 })} J`} accent
+                tooltip={[
+                  `E = [m]F[/m] × d   (work = force × distance)`,
+                  ``,
+                  `d = [c]v[/c] × [c]walk_hrs[/c] × [c]3600[/c] × [c]365[/c] × [c]lifespan[/c]`,
+                  `  = [c]1.4[/c] × [c]4[/c] × [c]3600[/c] × [c]365[/c] × [c]75[/c] = [c]${(1.4*4*3600*365*75).toLocaleString()} m[/c]`,
+                  ``,
+                  `[c]4 hr·day⁻¹[/c]    NHS physical activity guideline estimate`,
+                  `[c]75 yr[/c]         WHO 2023 global average lifespan`,
+                  ``,
+                  `E = [m]${d.dragForce.toFixed(4)} N[/m] × [c]${(1.4*4*3600*365*75).toLocaleString()} m[/c]`,
+                  `= [m]${d.lifetimeEnergy.toLocaleString(undefined, { maximumFractionDigits: 0 })} J[/m]`,
+                ].join('\n')}
+              />
+              <DataRow
+                label="Energy Wasted" value={`${d.bigMacs.toFixed(1)} Big Macs`}
+                tooltip={[
+                  `bigMacs = [m]E_lifetime[/m] / [c]E_per_BigMac[/c]`,
+                  ``,
+                  `[c]E_per_BigMac = 550 kcal × 4,184 J·kcal⁻¹ = 2,301,200 J[/c]`,
+                  `  [c]550 kcal[/c] = McDonald's official nutrition data`,
+                  ``,
+                  `= [m]${d.lifetimeEnergy.toLocaleString(undefined, { maximumFractionDigits: 0 })} J[/m] / [c]2,301,200[/c]`,
+                  `= [m]${d.bigMacs.toFixed(2)} Big Macs[/m] over [c]75 years[/c]`,
+                ].join('\n')}
+              />
+              <DataRow
+                label="Metabolic cost of drag" value={`${d.daysLost.toFixed(1)} rest-days`}
+                tooltip={[
+                  `rest_days = [m]E_lifetime[/m] / ([c]P_rest[/c] × [c]86,400 s·day⁻¹[/c])`,
+                  ``,
+                  `[c]P_rest = 80 W[/c]  avg adult resting metabolic rate`,
+                  `  Hall et al. (2012), NEJM — typical range 60–100 W`,
+                  ``,
+                  `= [m]${d.lifetimeEnergy.toLocaleString(undefined, { maximumFractionDigits: 0 })} J[/m] / ([c]80[/c] × [c]86,400[/c])`,
+                  `= [m]${d.daysLost.toFixed(2)} days[/m]`,
+                  ``,
+                  `your resting metabolism (heart, lungs, thermoregulation)`,
+                  `could run on drag's lifetime energy cost for this long.`,
+                  `not literal time lost — a metabolic energy scale.`,
+                ].join('\n')}
+              />
             </div>
           )}
 
           {/* 03 Drag reduction protocol */}
           {(analysis.recommendations || (d && m && (gemmaOnDemand || gemmaThinking))) && (
             <div className="panel-section">
-              <SectionLabel n="3">Drag reduction protocol</SectionLabel>
+              <SectionLabel n="3">DRAG REDUCTION PROTOCOL</SectionLabel>
               {analysis.recommendations ? (
                 <div style={{
                   fontFamily: 'var(--sans)', fontSize: 13, color: '#ccc',
