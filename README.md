@@ -1,14 +1,11 @@
 # AeroMaxx
-
-**Looksmaxx your aerodynamics. Streamline your life.**
-<img src="public/medium-quality-aeromaxx-gif.gif" width="700" alt="Aeromaxx demo gif" />
----
+<hr>
 
 ## What is this?
 
-Looksmaxxing is the practice of optimizing every measurable aspect of your physical presentation, popularized by Clavicular, a streamer. Most people focus on skin, hair, jaw. 
+[Looksmaxxing](https://en.wikipedia.org/wiki/Looksmaxxing) is the practice of optimizing every measurable aspect of your physical presentation, popularized by Clavicular, a streamer. Most people focus on skin, hair, jaw. 
 
-**We focus on drag coefficient. Looksmaxx your aerodynamics. Streamline your life.**
+**AeroMaxx focuses on something far too ignored in the looksmaxxing community: drag coefficient. If you aren't aerodynamicmaxxing, then drag is constantly slowing your down and keeping you from your ultimate health. Looksmaxx your aerodynamics. Streamline your life.**
 
 1. Upload a photo.
 2. Your stance gets analyzed — 2D measurements are extracted and crunched while a 3D model with aerodynamic drag visualized in real-time is generated. 
@@ -19,7 +16,8 @@ Looksmaxxing is the practice of optimizing every measurable aspect of your physi
 
 The average person wastes **hundreds of Big Macs worth of energy** fighting air resistance over a lifetime. AeroMaxx quantifies exactly how much, and tells you what to do about it.
 
----
+<img style="width: 300px" src="https://i.imgur.com/sH2Mkfi.gif"/>
+<hr>
 
 ## Stack
 
@@ -32,16 +30,6 @@ The average person wastes **hundreds of Big Macs worth of energy** fighting air 
 | AI Analysis | Google AI Studio — `gemma-4-31b-it` via OpenAI-compat endpoint |
 | Asset Storage | Cloudinary (subject images) |
 | Database & Storage | Supabase — PostgreSQL `subjects` table + Storage bucket (`glb-models`) |
-| Drag Physics | Hoerner (1965) + Kyle & Burke (1984) empirical constants |
-
-**Complexity highlights:**
-- Zero-allocation per-frame streamline animation — directly mutates Line2's internal `InterleavedBuffer` to avoid GC pressure on 280 concurrent trails
-- Dual async pipeline (pose + 3D generation) with a synchronization gate: Gemma runs in parallel with Meshy (~10s), result is held until the user's 3D model renders, then revealed instantly
-- Gemma is deferred for leaderboard and import loads — a manual trigger button appears instead; fresh uploads auto-run
-- Supabase dual-write (Storage blob + DB row) only fires on fresh generations, not on leaderboard reloads — deduplication handled in the geometry measurement callback
-- World-space CFD normal shader that's camera-independent — pressure colors stay fixed as you orbit
-- MediaPipe GPU-delegate inference running directly on an offscreen `HTMLCanvasElement`
-- Per-row calculation tooltips distinguishing measured values (green) from published constants with citations (orange), rendered inline without any tooltip library
 
 ---
 
@@ -81,14 +69,16 @@ Every number shown in the UI has a `↴` toggle that expands its source equation
 
 ---
 
-## Logic Flow
+## (Heavy technical details) Logic Flow
 
-<img width="883" height="771" alt="Screenshot 2026-04-25 at 8 26 39 PM" src="https://github.com/user-attachments/assets/f5565a02-4883-43c2-a6fc-c5c6f4dbb0dc" />
+<img width="500" src="https://imgur.com/bzijVe4.png" />
 
 ---
 
 ### 1. Page renders with default `.glb` file loaded
-<br/>
+<img src="https://i.imgur.com/nkSpOEX.gif">
+*The default model is a `.glb` file from [this repo](https://github.com/hmthanh/3d-human-model/tree/main)*
+<br><br>
 *The default model is a `.glb` file from [this repo](https://github.com/hmthanh/3d-human-model/tree/main)*
 
 Three.js initializes a `WebGLRenderer`, `PerspectiveCamera`, and `OrbitControls`. A default `.glb` is loaded via `GLTFLoader`. Once loaded, a `Box3` bounding box is computed, the mesh is scaled so its tallest axis = 2.0 world units, and a custom `ShaderMaterial` is applied across all meshes.
@@ -113,9 +103,10 @@ Pixel distances are computed as `sqrt(((ax-bx)·W)² + ((ay-by)·H)²)`. Body he
 
 The landmarks are drawn back onto the canvas as a labeled skeleton and exported as a base64 JPEG.
 
-<img width="772" height="438" alt="mediapipe" src="https://github.com/user-attachments/assets/61f08562-f3af-4281-ba92-9903b128a796" />
+<img width="500" alt="mediapipe" src="https://imgur.com/sgPfiqV.png" />
 <br/>
-*Of MediaPipe's 33 landmarks, AeroMaxx uses 9 for measurement: nose (0), left/right shoulder (11, 12), left/right hip (23, 24), and left/right ankle (27, 28). Elbow (13, 14), wrist (15, 16), and knee (25, 26) are drawn in the skeleton overlay but not used for drag calculation.*
+<i>Of MediaPipe's 33 landmarks, AeroMaxx uses 9 for measurement: nose (0), left/right shoulder (11, 12), left/right hip (23, 24), and left/right ankle (27, 28). Elbow (13, 14), wrist (15, 16), and knee (25, 26) are drawn in the skeleton overlay but not used for drag calculation.</i><br>
+<br>
 
 Gemma also fires here — in parallel with Meshy, using only 2D measurements. Its result is held and only revealed once the 3D model finishes rendering.
 
@@ -127,7 +118,7 @@ The image is converted to a base64 data URI and POSTed to `https://api.meshy.ai/
 
 That URL is proxied through Vite (`/meshy-assets → https://assets.meshy.ai`) to bypass CORS, fetched as a blob, and uploaded to Supabase Storage (`glb-models` bucket) for persistent hosting. The Supabase public URL becomes the canonical GLB reference going forward.
 
-<img width="641" height="747" alt="detail" src="https://github.com/user-attachments/assets/dab83768-a014-43ce-ac7d-bec14579cccb" />
+<img width="500" alt="detail" src="https://imgur.com/HTP3YML.png" />
 <br/>
 *Meshy image generation takes 120–180 seconds, but the detail is pretty good. In this image, it detected my lanyard, bracelet, and wristband correctly.*
 
@@ -144,6 +135,9 @@ The subject (image URL, GLB URL, Cd score) is then written to the Supabase `subj
 ### 6. Insights sent to Gemma
 
 Gemma runs in parallel with the Meshy pipeline using only 2D pose measurements — it does not wait for the 3D model. The response is held until the user's GLB finishes rendering, then revealed immediately. While Gemma is processing, a custom ASCII waveform cycles `+`, `-`, `'`, `` ` `` across a 9-character phase-shifted window at 90ms/tick with a live elapsed timer.
+<br><br>
+<img width="500" src="https://imgur.com/LgM4J3w.gif"><br>
+<i>A custom loading animation that I made for Gemma.</i>
 
 For leaderboard and import loads, Gemma does not auto-run. An "Ask Gemma for suggestions" button appears in its place.
 
@@ -153,11 +147,13 @@ POSTs to `https://generativelanguage.googleapis.com/v1beta/openai/chat/completio
 
 ### 7. Leaderboard
 
+<img width="500" src="https://i.imgur.com/fO2StlW.gif">
+<br><i>Clicking on the leaderboard pulls up that user's profile and 3D model</i>
+<br><br>
+
 Every analyzed subject is persisted to Supabase (`subjects` table, ordered by `cd_score ASC`). The leaderboard overlay opens from the header and paginates at 10 entries per page. Each entry stores the original photo URL, the Supabase GLB URL, and the Cd score.
 
 Clicking an entry reloads the GLB into the viewer and re-runs pose analysis on the stored photo, without re-generating a 3D model or auto-querying Gemma.
-
-An import form lets you recover older Meshy generations not yet in the database. The Meshy task history API (`GET /openapi/v1/image-to-3d` with pagination, filtered to `status === 'SUCCEEDED'`) is presented as a scrollable picker. Select a past task to pre-fill the GLB URL, supply the matching photo URL, and it's added to the database.
 
 ---
 
