@@ -13,6 +13,15 @@ export interface SubjectRecord {
   created_at: string
 }
 
+export async function uploadGlb(blob: Blob, filename: string): Promise<string> {
+  const { error } = await supabase.storage
+    .from('glb-models')
+    .upload(filename, blob, { contentType: 'model/gltf-binary', upsert: true })
+  if (error) throw new Error(`GLB storage upload failed: ${error.message}`)
+  const { data } = supabase.storage.from('glb-models').getPublicUrl(filename)
+  return data.publicUrl
+}
+
 export async function saveSubject(
   imageUrl: string,
   glbUrl: string,

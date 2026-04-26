@@ -4,7 +4,7 @@ import { extractLandmarks } from './pose'
 import { calculateDrag } from './drag'
 import { getRecommendations } from './gemma'
 import { createImageTo3DTask, pollTask } from './meshy'
-import { saveSubject, getLeaderboard, type SubjectRecord } from './db'
+import { saveSubject, getLeaderboard, uploadGlb, type SubjectRecord } from './db'
 import { listSucceededTasks, type MeshyListItem } from './meshy'
 import type { AnalysisState, GlbMeasurements, BodyMeasurements, DragResults } from './types'
 
@@ -62,22 +62,14 @@ async function toBase64(url: string): Promise<string> {
   })
 }
 
-async function uploadGlbToCloudinary(glbUrl: string): Promise<string> {
+async function uploadGlbToSupabase(glbUrl: string): Promise<string> {
   const proxyUrl = glbUrl.replace('https://assets.meshy.ai', '/meshy-assets')
   const blob = await fetch(proxyUrl).then(r => {
     if (!r.ok) throw new Error(`GLB fetch failed: ${r.status}`)
     return r.blob()
   })
-  const form = new FormData()
-  form.append('file', blob, 'model.glb')
-  form.append('upload_preset', UPLOAD_PRESET)
-  const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUD_NAME}/raw/upload`, {
-    method: 'POST',
-    body: form,
-  })
-  if (!res.ok) throw new Error(`Cloudinary GLB upload failed: ${res.status}`)
-  const data = await res.json()
-  return data.secure_url as string
+  const filename = `${Date.now()}-${Math.random().toString(36).slice(2)}.glb`
+  return uploadGlb(blob, filename)
 }
 
 const INIT: AnalysisState = {
@@ -530,12 +522,12 @@ export default function App() {
         setMeshyMessage(`Generating 3D model... ${pct}%`)
       })
 
-      setMeshyMessage('Uploading to CDN...')
+      setMeshyMessage('Uploading to storage...')
       let finalUrl = glbUrl
       try {
-        finalUrl = await uploadGlbToCloudinary(glbUrl)
+        finalUrl = await uploadGlbToSupabase(glbUrl)
       } catch (err) {
-        console.warn('[AeroMaxx] Cloudinary GLB upload failed, using proxy URL:', err)
+        console.warn('[AeroMaxx] Supabase GLB upload failed, using proxy URL:', err)
         finalUrl = glbUrl.replace('https://assets.meshy.ai', '/meshy-assets')
       }
 
