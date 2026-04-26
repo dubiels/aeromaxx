@@ -80,12 +80,7 @@ const INIT: AnalysisState = {
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-interface GalleryItem {
-  glbUrl: string
-  thumb: string
-}
-
-// ─── Sub-components ───────────────────────────────────────────────────────────
+// ─── Sub-components ───────────────────────────────────────────────────────��───
 
 function SectionLabel({ n, children }: { n: string; children: React.ReactNode }) {
   return (
@@ -165,47 +160,6 @@ function DataRow({ label, value, accent, dim, tooltip }: {
   )
 }
 
-function GalleryBar({ items, onLoad }: { items: GalleryItem[]; onLoad: (item: GalleryItem) => void }) {
-  const [hovered, setHovered] = useState(false)
-  if (items.length === 0) return null
-
-  const W = 56, H = 42, OVERLAP = 38
-
-  return (
-    <div
-      style={{
-        position: 'relative',
-        height: H,
-        width: hovered ? items.length * (W + 4) - 4 : W + (items.length - 1) * (W - OVERLAP),
-        transition: 'width 0.22s ease',
-        overflow: 'hidden',
-      }}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-    >
-      {items.map((item, i) => (
-        <div
-          key={item.glbUrl}
-          onClick={() => onLoad(item)}
-          style={{
-            position: 'absolute',
-            left: hovered ? i * (W + 4) : i * (W - OVERLAP),
-            top: 0,
-            width: W,
-            height: H,
-            cursor: 'pointer',
-            border: '1px solid #2a2a2a',
-            overflow: 'hidden',
-            transition: 'left 0.22s ease',
-            zIndex: items.length - i,
-          }}
-        >
-          <img src={item.thumb} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
-        </div>
-      ))}
-    </div>
-  )
-}
 
 function Leaderboard({ onClose, onLoadRecord, onImport }: {
   onClose: () => void
@@ -214,7 +168,9 @@ function Leaderboard({ onClose, onLoadRecord, onImport }: {
 }) {
   const [records, setRecords] = useState<SubjectRecord[]>([])
   const [loading, setLoading] = useState(true)
+  const [page, setPage] = useState(1)
   const [showImport, setShowImport] = useState(false)
+  const PAGE_SIZE = 10
   const [importImage, setImportImage] = useState('')
   const [importGlb, setImportGlb] = useState('')
   const [meshyTasks, setMeshyTasks] = useState<MeshyListItem[]>([])
@@ -397,61 +353,102 @@ function Leaderboard({ onClose, onLoadRecord, onImport }: {
             </div>
           )}
 
-          {records.map((r, i) => (
-            <div
-              key={r.id}
-              onClick={() => { onLoadRecord(r); onClose() }}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 14,
-                padding: '10px 20px', borderBottom: '1px solid #141414',
-                cursor: 'pointer', transition: 'background 0.12s',
-              }}
-              onMouseEnter={e => (e.currentTarget.style.background = '#161616')}
-              onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-            >
-              <span style={{
-                fontFamily: 'var(--mono)', fontSize: 11,
-                color: i === 0 ? 'var(--green)' : '#555',
-                width: 24, flexShrink: 0, textAlign: 'right',
-              }}>
-                {i + 1}
-              </span>
-              <img
-                src={r.image_url}
-                style={{ width: 44, height: 56, objectFit: 'cover', flexShrink: 0, border: '1px solid #1a1a1a' }}
-              />
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontFamily: 'var(--mono)', fontSize: 13, color: 'var(--green)' }}>
-                  Cd {r.cd_score.toFixed(4)}
-                </div>
-                <div style={{ fontFamily: 'var(--mono)', fontSize: 9, color: '#555', marginTop: 2 }}>
-                  {new Date(r.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                  {' · click to load 3D model'}
-                </div>
-              </div>
-              {i === 0 && (
-                <span style={{ fontFamily: 'var(--mono)', fontSize: 8, color: 'var(--green)', letterSpacing: 1 }}>
-                  most aerodynamic
+          {records.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE).map((r, i) => {
+            const rank = (page - 1) * PAGE_SIZE + i
+            return (
+              <div
+                key={r.id}
+                onClick={() => { onLoadRecord(r); onClose() }}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 14,
+                  padding: '10px 20px', borderBottom: '1px solid #141414',
+                  cursor: 'pointer', transition: 'background 0.12s',
+                }}
+                onMouseEnter={e => (e.currentTarget.style.background = '#161616')}
+                onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+              >
+                <span style={{
+                  fontFamily: 'var(--mono)', fontSize: 11,
+                  color: rank === 0 ? 'var(--green)' : '#555',
+                  width: 24, flexShrink: 0, textAlign: 'right',
+                }}>
+                  {rank + 1}
                 </span>
-              )}
-            </div>
-          ))}
+                <img
+                  src={r.image_url}
+                  style={{ width: 44, height: 56, objectFit: 'cover', flexShrink: 0, border: '1px solid #1a1a1a' }}
+                />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontFamily: 'var(--mono)', fontSize: 13, color: 'var(--green)' }}>
+                    Cd {r.cd_score.toFixed(4)}
+                  </div>
+                  <div style={{ fontFamily: 'var(--mono)', fontSize: 9, color: '#555', marginTop: 2 }}>
+                    {new Date(r.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                    {' · click to load 3D model'}
+                  </div>
+                </div>
+                {rank === 0 && (
+                  <span style={{ fontFamily: 'var(--mono)', fontSize: 8, color: 'var(--green)', letterSpacing: 1 }}>
+                    most aerodynamic
+                  </span>
+                )}
+              </div>
+            )
+          })}
         </div>
+
+        {/* Pagination */}
+        {records.length > PAGE_SIZE && (
+          <div style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            padding: '10px 20px', borderTop: '1px solid #1a1a1a', flexShrink: 0,
+          }}>
+            <button
+              onClick={() => setPage(p => Math.max(1, p - 1))}
+              disabled={page === 1}
+              style={{
+                background: 'none', border: 'none', cursor: page === 1 ? 'default' : 'pointer',
+                fontFamily: 'var(--mono)', fontSize: 10, color: page === 1 ? '#333' : '#777', padding: 0,
+              }}
+            >← prev</button>
+            <span style={{ fontFamily: 'var(--mono)', fontSize: 10, color: '#555' }}>
+              {page} / {Math.ceil(records.length / PAGE_SIZE)}
+            </span>
+            <button
+              onClick={() => setPage(p => Math.min(Math.ceil(records.length / PAGE_SIZE), p + 1))}
+              disabled={page === Math.ceil(records.length / PAGE_SIZE)}
+              style={{
+                background: 'none', border: 'none',
+                cursor: page === Math.ceil(records.length / PAGE_SIZE) ? 'default' : 'pointer',
+                fontFamily: 'var(--mono)', fontSize: 10,
+                color: page === Math.ceil(records.length / PAGE_SIZE) ? '#333' : '#777', padding: 0,
+              }}
+            >next →</button>
+          </div>
+        )}
       </div>
     </div>
   )
 }
 
-function ThinkingSpike() {
+function GemmaThinking() {
   const CHARS = ['+', '-', "'", '`']
   const [t, setT] = useState(0)
+  const [elapsed, setElapsed] = useState(0)
+  const startRef = useRef(Date.now())
   useEffect(() => {
-    const id = setInterval(() => setT(n => (n + 1) % 4), 90)
+    const id = setInterval(() => {
+      setT(n => (n + 1) % 4)
+      setElapsed(Date.now() - startRef.current)
+    }, 90)
     return () => clearInterval(id)
   }, [])
   const str = Array.from({ length: 9 }, (_, i) => CHARS[(t + i) % 4]).join(' ')
   return (
-    <div style={{ fontFamily: 'var(--mono)', fontSize: 13, color: 'var(--green)', letterSpacing: 2 }}>
+    <div style={{ fontFamily: 'var(--mono)', fontSize: 13, color: 'var(--green)', letterSpacing: 2, display: 'flex', alignItems: 'center', gap: 14 }}>
+      <span style={{ color: '#555', fontSize: 11, letterSpacing: 0.5, flexShrink: 0 }}>
+        [{(elapsed / 1000).toFixed(1)}s]
+      </span>
       {str}
     </div>
   )
@@ -493,7 +490,6 @@ export default function App() {
   const [meshyLoading, setMeshyLoading]   = useState(false)
   const [meshyMessage, setMeshyMessage]   = useState('')
   const [analysis, setAnalysis]           = useState<AnalysisState>(INIT)
-  const [gallery, setGallery]             = useState<GalleryItem[]>([])
   const [showLeaderboard, setShowLeaderboard] = useState(false)
   const [gemmaOnDemand, setGemmaOnDemand]     = useState(false)
   const [gemmaThinking, setGemmaThinking]     = useState(false)
@@ -622,14 +618,6 @@ export default function App() {
     }
   }, [tryRevealGemma]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const handleSnapshot = useCallback((dataUrl: string, glbUrl: string) => {
-    setGallery(prev => prev.some(g => g.glbUrl === glbUrl) ? prev : [...prev, { glbUrl, thumb: dataUrl }])
-  }, [])
-
-  const handleGalleryLoad = useCallback((item: GalleryItem) => {
-    setMeshyModelUrl(item.glbUrl)
-  }, [])
-
   const handleManualImport = useCallback((imageUrl: string, glbUrl: string) => {
     frontUrlRef.current          = imageUrl
     meshyUrlRef.current          = glbUrl
@@ -735,13 +723,7 @@ export default function App() {
             loading={meshyLoading}
             loadingMessage={meshyMessage}
             onGeometryMeasured={handleGeometryMeasured}
-            onSnapshot={handleSnapshot}
           />
-          {gallery.length > 0 && (
-            <div style={{ position: 'absolute', bottom: 16, left: 16, zIndex: 10 }}>
-              <GalleryBar items={gallery} onLoad={handleGalleryLoad} />
-            </div>
-          )}
         </div>
 
         {/* Right — upload + stats */}
@@ -1064,7 +1046,7 @@ export default function App() {
                   {analysis.recommendations}
                 </div>
               ) : gemmaThinking ? (
-                <ThinkingSpike />
+                <GemmaThinking />
               ) : (
                 <button
                   className="btn-secondary"
