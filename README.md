@@ -12,9 +12,10 @@ Looksmaxxing is the practice of optimizing every measurable aspect of your physi
 
 1. Upload a photo.
 2. Your stance gets analyzed -- 2D numbers are extracted and crunched while a 3D model with aerodynamic drag visualized and simulated in real-time is generated. 
-3. Nothing is hardcoded. Your photo generates real physics data with insights for how the calculations were formed.
+3. Nothing is hardcoded. Every number in the aerodynamic report has a source-cited equation tooltip showing exactly which values were measured from your photo and which are published constants.
 4. A real, interactive, 3D aerodynamic model is generated from your uploaded photo with extensive detail. You can rotate and observe the aerodynamic flow around your form in the 3D viewer.
-5. All of this 3D and 2D analysis data is given to Google Gemma, who provides you with a personalized drag reduction protocol — specific exercises, posture corrections, and clothing changes — ranked by projected percentage improvement to your Cd.
+5. All of this analysis data is given to Google Gemma, who provides you with a personalized drag reduction protocol — specific exercises, posture corrections, and clothing changes — ranked by projected percentage improvement to your Cd.
+6. Every subject is persisted to a global leaderboard (lowest Cd wins). You can reload any past entry to re-render its 3D model and re-run analysis.
 
 The average person wastes **hundreds of Big Macs worth of energy** fighting air resistance over a lifetime. AeroMaxx quantifies exactly how much, and tells you what to do about it.
 
@@ -29,14 +30,18 @@ The average person wastes **hundreds of Big Macs worth of energy** fighting air 
 | Pose Estimation | MediaPipe Tasks Vision — `PoseLandmarker` (GPU delegate) |
 | 3D Reconstruction | Meshy AI image-to-3D (`meshy-6`) |
 | AI Analysis | Google AI Studio — `gemma-4-31b-it` via OpenAI-compat endpoint |
-| Asset Storage | Cloudinary (images + GLBs) |
+| Asset Storage | Cloudinary (subject images) |
+| Database & Storage | Supabase — PostgreSQL `subjects` table + Storage bucket (`glb-models`) |
 | Drag Physics | Hoerner (1965) + Kyle & Burke (1984) empirical constants |
 
 **Complexity highlights:**
 - Zero-allocation per-frame streamline animation — directly mutates Line2's internal `InterleavedBuffer` to avoid GC pressure on 280 concurrent trails
-- Dual async pipeline (pose + 3D generation) with a synchronization gate before analysis is revealed
+- Dual async pipeline (pose + 3D generation) with a ref-based synchronization gate: Gemma runs in parallel with Meshy (~10s), result held in `gemmaResultRef` until `userModelRenderedRef=true`, then revealed instantly
+- Gemma is deferred for leaderboard/import loads — `gemmaOnDemandRef` blocks the auto-run path, showing an "Ask Gemma for suggestions" button instead; fresh uploads still auto-run
+- Supabase dual-write (Storage blob + DB row) gated behind `isUserModel` flag; `skipNextSaveRef` prevents duplicate inserts when reloading an existing leaderboard entry
 - World-space CFD normal shader that's camera-independent — pressure colors stay fixed as you orbit
 - MediaPipe GPU-delegate inference running directly on an offscreen `HTMLCanvasElement`
+- Per-row calculation tooltips with `[m]`/`[c]` color markup distinguishing measured values (green) from published constants (orange), rendered inline without any tooltip library
 
 ---
 
@@ -78,13 +83,15 @@ Those landmarks are then drawn back onto the canvas as green skeleton lines + la
 
 **Drag physics** (`drag.ts`): `F = ½ρv²CdA` where `ρ = 1.225 kg/m³`, `v = 1.4 m/s`. Without GLB, `A = realShoulderWidth × 1.75 × 0.73` (0.73 = Kyle & Burke 1984 fill factor). Base `Cd = 0.80` (Hoerner 1965). Postural penalty: `hunchScore × 0.08` Cd units. Lifetime energy: `F × v × 4 hr/day × 3600 × 365 × 75 yr` joules.
 
+**Transparent calculation tooltips**: every row in the aerodynamic report has a `↴` toggle that expands an inline panel showing the source equation, with measured values colored green and hardcoded constants colored orange. Constants include their citation (ACSM, Kyle & Burke 1984, Hoerner 1965, Hall et al. 2012, WHO 2023, etc.).
+
 ---
 
 ### 4. Right branch — Meshy 3D generation
 
 The Cloudinary image is fetched, converted to a base64 data URI, and POSTed to `https://api.meshy.ai/openapi/v1/image-to-3d` with `{model: "meshy-6", symmetry_mode: "on", enable_pbr: false}`. Meshy returns a `task_id`. Polling hits `GET /openapi/v1/image-to-3d/{taskId}` every 3 seconds, reading `task.progress` until `status === "SUCCEEDED"`. Returns a signed `assets.meshy.ai` GLB URL.
 
-That URL is proxied through Vite (`/meshy-assets → https://assets.meshy.ai`) to bypass CORS, fetched as a blob, and uploaded to Cloudinary via `POST /v1_1/{cloud}/raw/upload` with `resource_type: raw` for persistent storage.
+That URL is proxied through Vite (`/meshy-assets → https://assets.meshy.ai`) to bypass CORS, fetched as a blob, and uploaded to **Supabase Storage** (`glb-models` bucket) via `supabase.storage.from('glb-models').upload(filename, blob)` for persistent storage. The public URL returned by Supabase is used as the canonical GLB reference.
 
 <img src="public/detail.png" width="420" alt="Meshy 3D reconstruction detail" /><br/>
 *Meshy image generation takes 120–180 seconds, but the detail is pretty good. In this image, it detected my lanyard, bracelet, and wristband correctly.*
@@ -93,15 +100,29 @@ That URL is proxied through Vite (`/meshy-assets → https://assets.meshy.ai`) t
 
 ### 5. GLB loads in viewer + geometry measurement
 
-`GLTFLoader` fetches the Cloudinary GLB URL. On load, `Box3.setFromObject()` computes the tight axis-aligned bounding box. `size.x` = shoulder width, `size.z` = front-to-back depth, both in normalized world units. Real measurements: `realWidth = (size.x / size.y) × 1.7526`. `frontalArea = realWidth × 1.7526 × 0.73`. `depthToWidthRatio = realDepth / realWidth`.
+`GLTFLoader` fetches the Supabase GLB URL. On load, `Box3.setFromObject()` computes the tight axis-aligned bounding box. `size.x` = shoulder width, `size.z` = front-to-back depth, both in normalized world units. Real measurements: `realWidth = (size.x / size.y) × 1.7526`. `frontalArea = realWidth × 1.7526 × 0.73`. `depthToWidthRatio = realDepth / realWidth`.
 
-Cd corrections applied: if `ratio < 0.35`, flat-body penalty `+= (0.35 - r) × 0.40`; if `ratio > 0.70`, deep-body penalty `+= (r - 0.70) × 0.20`. `onGeometryMeasured` callback fires, storing `GlbMeasurements` and triggering the Gemma gate.
+Cd corrections applied: if `ratio < 0.35`, flat-body penalty `+= (0.35 - r) × 0.40`; if `ratio > 0.70`, deep-body penalty `+= (r - 0.70) × 0.20`. `onGeometryMeasured(glb, isUserModel)` callback fires. When `isUserModel=true` (only for fresh Meshy generations, not default model init or leaderboard reloads), `saveSubject(imageUrl, glbUrl, cdScore)` inserts a record into the Supabase `subjects` table. `skipNextSaveRef` prevents duplicate inserts when reloading an existing leaderboard entry.
 
 ---
 
 ### 6. Insights sent to Gemma
 
-`tryRunGemma()` checks that both `poseDataRef` and `glbReadyRef` are non-null — only then fires. Recalculates drag with the richer 3D `A` value. POSTs to `https://generativelanguage.googleapis.com/v1beta/openai/chat/completions` with `model: "gemma-4-31b-it"`, passing the full numeric profile (Cd, A, hunch score, postural penalty, shoulder-to-hip ratio, lifetime joules) as the user message. `temperature: 0.3`, `max_tokens: 500`. Response is stripped of any `<thought>...</thought>` block via regex before display.
+Gemma runs in parallel with Meshy — it fires immediately after pose analysis completes using only 2D measurements (shoulder width, hip width, hunch score, postural penalty, shoulder-to-hip ratio, lifetime energy). It does not wait for the 3D model. The result is held in `gemmaResultRef` until `userModelRenderedRef=true` (set when the user's GLB renders), then `tryRevealGemma()` exposes it instantly via `setAnalysis`.
+
+For leaderboard and import loads, `gemmaOnDemandRef=true` blocks the auto-run path. Section 3 shows an "Ask Gemma for suggestions" button instead. While Gemma is running, a custom ASCII waveform cycles `+`, `-`, `'`, `` ` `` across a 9-character window (phase-shifted each tick, 90ms interval) with a millisecond elapsed timer (`[X.Xs]`) displayed alongside it.
+
+POSTs to `https://generativelanguage.googleapis.com/v1beta/openai/chat/completions` with `model: "gemma-4-31b-it"`, `temperature: 0.3`, `max_tokens: 500`. Response is stripped of any `<thought>...</thought>` block via regex before display.
+
+---
+
+### 7. Leaderboard
+
+Every analyzed subject is persisted to Supabase. `getLeaderboard()` queries `SELECT * FROM subjects ORDER BY cd_score ASC LIMIT 100`. The overlay opens from the "Leaderboard" header button and paginates at 10 entries per page.
+
+Each record stores `image_url` (Cloudinary), `glb_url` (Supabase Storage), and `cd_score`. Clicking a row calls `handleLeaderboardLoad`: sets both URL refs, sets `skipNextSaveRef=true`, sets `gemmaOnDemandRef=true`, loads the GLB into the viewer, and re-runs pose analysis on the stored photo — without re-running Meshy or auto-querying Gemma.
+
+An import form recovers older Meshy generations not yet in the database. The Meshy task history API (`GET /openapi/v1/image-to-3d?page_num=X&page_size=24&sort_by=-created_at`, up to 5 pages) is filtered to `status === 'SUCCEEDED'` and presented as a scrollable picker. The user selects a past task to pre-fill the GLB URL, then supplies the matching Cloudinary photo URL.
 
 ---
 
@@ -110,6 +131,7 @@ Cd corrections applied: if `ratio < 0.35`, flat-body penalty `+= (0.35 - r) × 0
 ```bash
 cp .env.example .env
 # fill in VITE_CLOUDINARY_*, VITE_MESHY_API_KEY, VITE_GEMINI_API_KEY
+# fill in VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY
 npm install
 npm run dev
 ```
