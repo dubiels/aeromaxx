@@ -6,7 +6,7 @@
 
 [Looksmaxxing](https://en.wikipedia.org/wiki/Looksmaxxing) is the practice of optimizing every measurable aspect of your physical presentation, popularized by Clavicular, a streamer. Most people focus on skin, hair, jaw. 
 
-**AeroMaxx focuses on something far too ignored in the looksmaxxing community: drag coefficient. If you aren't aerodynamicmaxxing, then drag is constantly slowing your down and keeping you from your ultimate health. Looksmaxx your aerodynamics. Streamline your life.**
+**AeroMaxx focuses on something far too ignored in the looksmaxxing community: drag coefficient. <br> If you aren't aerodynamicmaxxing, then drag is constantly slowing you down and keeping you from your ultimate health. <br> Looksmaxx your aerodynamics. Streamline your life.**
 
 1. Upload a photo.
 2. Your stance gets analyzed — 2D measurements are extracted and crunched while a 3D model with aerodynamic drag visualized in real-time is generated. 
