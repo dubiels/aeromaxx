@@ -396,6 +396,21 @@ function Leaderboard({ onClose, onLoadRecord, onImport }: {
   )
 }
 
+function ThinkingSpike() {
+  const CHARS = ['+', '-', "'", '`']
+  const [t, setT] = useState(0)
+  useEffect(() => {
+    const id = setInterval(() => setT(n => (n + 1) % 4), 90)
+    return () => clearInterval(id)
+  }, [])
+  const str = Array.from({ length: 9 }, (_, i) => CHARS[(t + i) % 4]).join(' ')
+  return (
+    <div style={{ fontFamily: 'var(--mono)', fontSize: 13, color: 'var(--green)', letterSpacing: 2 }}>
+      {str}
+    </div>
+  )
+}
+
 function UploadPrompt({ onUpload }: { onUpload: () => void }) {
   const [hover, setHover] = useState(false)
   return (
@@ -434,9 +449,12 @@ export default function App() {
   const [analysis, setAnalysis]           = useState<AnalysisState>(INIT)
   const [gallery, setGallery]             = useState<GalleryItem[]>([])
   const [showLeaderboard, setShowLeaderboard] = useState(false)
+  const [gemmaOnDemand, setGemmaOnDemand]     = useState(false)
+  const [gemmaThinking, setGemmaThinking]     = useState(false)
 
   // Pipeline state refs — stable across renders, safe to read in async callbacks
   const poseDataRef          = useRef<{ measurements: BodyMeasurements; drag: DragResults } | null>(null)
+  const gemmaOnDemandRef     = useRef(false)
   const gemmaResultRef       = useRef<string | null>(null)
   const userModelRenderedRef = useRef(false)
   const gemmaRunningRef      = useRef(false)
@@ -485,7 +503,7 @@ export default function App() {
         loading: false, loadingMessage: '',
       }))
 
-      void runGemma(measurements, drag)
+      if (!gemmaOnDemandRef.current) void runGemma(measurements, drag)
     } catch (err) {
       setAnalysis(s => ({
         ...s, loading: false, loadingMessage: '',
@@ -507,6 +525,7 @@ export default function App() {
       }))
     } finally {
       gemmaRunningRef.current = false
+      setGemmaThinking(false)
     }
   }
 
@@ -568,6 +587,8 @@ export default function App() {
   const handleManualImport = useCallback((imageUrl: string, glbUrl: string) => {
     frontUrlRef.current          = imageUrl
     meshyUrlRef.current          = glbUrl
+    gemmaOnDemandRef.current     = true
+    setGemmaOnDemand(true)
     // skipNextSaveRef stays false — this is a new entry, we want to persist it
     setFrontUrl(imageUrl)
     setMeshyModelUrl(glbUrl)
@@ -583,6 +604,8 @@ export default function App() {
     frontUrlRef.current          = record.image_url
     meshyUrlRef.current          = record.glb_url
     skipNextSaveRef.current      = true   // already in DB — don't re-insert
+    gemmaOnDemandRef.current     = true
+    setGemmaOnDemand(true)
     setFrontUrl(record.image_url)
     setMeshyModelUrl(record.glb_url)
     setAnalysis(INIT)
@@ -596,8 +619,10 @@ export default function App() {
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleUpload = useCallback((url: string) => {
-    frontUrlRef.current  = url
-    meshyUrlRef.current  = null
+    frontUrlRef.current          = url
+    meshyUrlRef.current          = null
+    gemmaOnDemandRef.current     = false
+    setGemmaOnDemand(false)
     setFrontUrl(url)
     setMeshyModelUrl(null)
     setAnalysis(INIT)
@@ -803,16 +828,35 @@ export default function App() {
             </div>
           )}
 
-          {/* 03 Drag reduction protocol — appears after both pose + 3D geometry complete */}
-          {analysis.recommendations && (
+          {/* 03 Drag reduction protocol */}
+          {(analysis.recommendations || (d && m && (gemmaOnDemand || gemmaThinking))) && (
             <div className="panel-section">
               <SectionLabel n="3">Drag reduction protocol</SectionLabel>
-              <div style={{
-                fontFamily: 'var(--sans)', fontSize: 13, color: '#ccc',
-                lineHeight: 1.8, whiteSpace: 'pre-wrap',
-              }}>
-                {analysis.recommendations}
-              </div>
+              {analysis.recommendations ? (
+                <div style={{
+                  fontFamily: 'var(--sans)', fontSize: 13, color: '#ccc',
+                  lineHeight: 1.8, whiteSpace: 'pre-wrap',
+                }}>
+                  {analysis.recommendations}
+                </div>
+              ) : gemmaThinking ? (
+                <ThinkingSpike />
+              ) : (
+                <button
+                  className="btn-secondary"
+                  style={{ width: '100%' }}
+                  onClick={() => {
+                    gemmaOnDemandRef.current = false
+                    setGemmaOnDemand(false)
+                    setGemmaThinking(true)
+                    if (poseDataRef.current) {
+                      void runGemma(poseDataRef.current.measurements, poseDataRef.current.drag)
+                    }
+                  }}
+                >
+                  Ask Gemma for suggestions
+                </button>
+              )}
             </div>
           )}
 
