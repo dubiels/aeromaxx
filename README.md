@@ -77,8 +77,6 @@ Every number shown in the UI has a `↴` toggle that expands its source equation
 ---
 
 ### 1. Page renders with default `.glb` file loaded
-<img src="https://i.imgur.com/nkSpOEX.gif">
-*The default model is a `.glb` file from [this repo](https://github.com/hmthanh/3d-human-model/tree/main)*
 <br><br>
 *The default model is a `.glb` file from [this repo](https://github.com/hmthanh/3d-human-model/tree/main)*
 
