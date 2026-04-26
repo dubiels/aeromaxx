@@ -1,6 +1,7 @@
 # AeroMaxx
 <hr>
-<img src="public/medium-quality-aeromaxx-gif.gif" width="700" alt="Aeromaxx demo gif" />
+<img width="960" height="520" alt="demo" src="https://github.com/user-attachments/assets/e7744876-bd83-4c80-b985-88cbf23d6f94" />
+
 
 ## What is this?
 
@@ -77,7 +78,10 @@ Every number shown in the UI has a `↴` toggle that expands its source equation
 ---
 
 ### 1. Page renders with default `.glb` file loaded
-<br><br>
+<br>
+<img width="480" height="423" alt="defaultiy" src="https://github.com/user-attachments/assets/c9242b51-d61e-4b0d-af98-d022e07f5a32" />
+
+<br>
 *The default model is a `.glb` file from [this repo](https://github.com/hmthanh/3d-human-model/tree/main)*
 
 Three.js initializes a `WebGLRenderer`, `PerspectiveCamera`, and `OrbitControls`. A default `.glb` is loaded via `GLTFLoader`. Once loaded, a `Box3` bounding box is computed, the mesh is scaled so its tallest axis = 2.0 world units, and a custom `ShaderMaterial` is applied across all meshes.
