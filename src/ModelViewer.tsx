@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import * as THREE from 'three'
 import type { GlbMeasurements } from './types'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
@@ -328,6 +328,7 @@ function ColorScaleBar() {
 export default function ModelViewer({ modelUrl, cdValue, loading, loadingMessage, onGeometryMeasured, onSnapshot }: ModelViewerProps) {
   const mountRef          = useRef<HTMLDivElement>(null)
   const stateRef          = useRef<ViewerState | null>(null)
+  const [defaultLoading, setDefaultLoading] = useState(true)
   const cdRef             = useRef(cdValue)
   const loadIdRef         = useRef(0)
   const activeUrlRef      = useRef<string | null>(null)
@@ -486,11 +487,13 @@ export default function ModelViewer({ modelUrl, cdValue, loading, loadingMessage
       clearModel(state)
       setupModel(gltf.scene, state, cdRef.current)
       geoCallbackRef.current?.(measureGlb(state), false)
+      setDefaultLoading(false)
     }, undefined, () => {
       if (loadIdRef.current !== myId || !stateRef.current) return
       clearModel(state)
       loadFallback(state, cdRef.current)
       geoCallbackRef.current?.(measureGlb(state), false)
+      setDefaultLoading(false)
     })
 
     return () => {
@@ -557,7 +560,7 @@ export default function ModelViewer({ modelUrl, cdValue, loading, loadingMessage
         <ColorScaleBar />
       </div>
 
-      {loading && (
+      {(loading || defaultLoading) && (
         <div style={{
           position: 'absolute', inset: 0,
           background: 'rgba(8,8,8,0.80)',
@@ -566,7 +569,7 @@ export default function ModelViewer({ modelUrl, cdValue, loading, loadingMessage
         }}>
           <div style={{ fontFamily: 'var(--mono)', color: 'var(--green)', fontSize: 13, letterSpacing: 3 }}
             className="pulse">
-            {loadingMessage || 'Generating 3D model...'}
+            {loadingMessage || (defaultLoading ? 'Loading 3D viewer...' : 'Generating 3D model...')}
           </div>
           <div style={{ fontFamily: 'var(--mono)', fontSize: 10, color: '#2a2a2a', letterSpacing: 4 }}>
             ░░░░░░░░░░
