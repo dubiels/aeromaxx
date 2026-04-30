@@ -37,7 +37,7 @@ function openWidget(cb: (url: string) => void) {
       styles: {
         palette: {
           window: '#0f0f0f', windowBorder: '#2a2a2a',
-          tabIcon: 'var(--green)', menuIcons: '#666',
+          tabIcon: 'var(--green)', menuIcons: '#999',
           textDark: '#e8e8e8', textLight: '#080808',
           link: 'var(--green)', action: 'var(--green)',
           inactiveTabIcon: '#444', error: '#ef5350',
@@ -128,7 +128,7 @@ function DataRow({ label, value, accent, dim, tooltip }: {
         display: 'flex', justifyContent: 'space-between', gap: 8,
         fontFamily: 'var(--mono)', fontSize: 12, lineHeight: 2.1,
       }}>
-        <span style={{ color: dim ? '#777' : '#aaa', display: 'flex', alignItems: 'center', gap: 5 }}>
+        <span style={{ color: dim ? '#999' : '#aaa', display: 'flex', alignItems: 'center', gap: 5 }}>
           {label}
           {tooltip && (
             <button
@@ -136,13 +136,13 @@ function DataRow({ label, value, accent, dim, tooltip }: {
               style={{
                 background: 'none', border: 'none', cursor: 'pointer', padding: 0,
                 fontFamily: 'var(--mono)', fontSize: 12, lineHeight: 1,
-                color: open ? 'var(--green)' : '#3a3a3a',
+                color: open ? 'var(--green)' : '#999',
                 transition: 'color 0.1s',
               }}
             >↴</button>
           )}
         </span>
-        <span style={{ color: accent ? '#ffffff' : dim ? '#888' : 'var(--green)', fontWeight: accent ? 700 : 400, textAlign: 'right' }}>
+        <span style={{ color: accent ? '#ffffff' : dim ? '#999' : 'var(--green)', fontWeight: accent ? 700 : 400, textAlign: 'right' }}>
           {value}
         </span>
       </div>
@@ -150,7 +150,7 @@ function DataRow({ label, value, accent, dim, tooltip }: {
         <div style={{
           background: '#0d0d0d', borderLeft: '2px solid #252525',
           padding: '9px 12px', marginBottom: 2,
-          fontFamily: 'var(--mono)', fontSize: 10, color: '#777',
+          fontFamily: 'var(--mono)', fontSize: 10, color: '#999',
           lineHeight: 1.9,
         }}>
           {renderTooltip(tooltip)}
@@ -225,7 +225,7 @@ function Leaderboard({ onClose, onLoadRecord, onImport }: {
             Global leaderboard — lowest Cd wins
           </span>
           <button onClick={onClose} style={{
-            background: 'none', border: 'none', color: '#666', cursor: 'pointer',
+            background: 'none', border: 'none', color: '#999', cursor: 'pointer',
             fontFamily: 'var(--mono)', fontSize: 18, lineHeight: 1, padding: '0 4px',
           }}>×</button>
         </div>
@@ -238,7 +238,7 @@ function Leaderboard({ onClose, onLoadRecord, onImport }: {
               style={{
                 background: 'none', border: 'none', cursor: 'pointer',
                 fontFamily: 'var(--mono)', fontSize: 9, letterSpacing: 1,
-                color: '#555', padding: 0,
+                color: '#999', padding: 0,
               }}
             >
               + import existing Cloudinary entry
@@ -247,7 +247,7 @@ function Leaderboard({ onClose, onLoadRecord, onImport }: {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
               {/* Meshy history browser */}
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <div style={{ fontFamily: 'var(--mono)', fontSize: 9, color: '#666', letterSpacing: 0.5 }}>
+                <div style={{ fontFamily: 'var(--mono)', fontSize: 9, color: '#999', letterSpacing: 0.5 }}>
                   Pick a GLB from your Meshy history, then add the matching photo URL
                 </div>
                 {!meshyFetched && (
@@ -261,7 +261,7 @@ function Leaderboard({ onClose, onLoadRecord, onImport }: {
               </div>
 
               {meshyFetched && meshyTasks.length === 0 && (
-                <div style={{ fontFamily: 'var(--mono)', fontSize: 9, color: '#444' }}>
+                <div style={{ fontFamily: 'var(--mono)', fontSize: 9, color: '#999' }}>
                   No succeeded tasks found in your Meshy account.
                 </div>
               )}
@@ -283,10 +283,10 @@ function Leaderboard({ onClose, onLoadRecord, onImport }: {
                       onMouseEnter={e => { if (importGlb !== t.glbUrl) e.currentTarget.style.background = '#111' }}
                       onMouseLeave={e => { if (importGlb !== t.glbUrl) e.currentTarget.style.background = 'transparent' }}
                     >
-                      <span style={{ fontFamily: 'var(--mono)', fontSize: 9, color: '#888' }}>
+                      <span style={{ fontFamily: 'var(--mono)', fontSize: 9, color: '#999' }}>
                         {t.createdAt ? new Date(t.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : t.id.slice(0, 12) + '…'}
                       </span>
-                      <span style={{ fontFamily: 'var(--mono)', fontSize: 9, color: importGlb === t.glbUrl ? 'var(--green)' : '#555' }}>
+                      <span style={{ fontFamily: 'var(--mono)', fontSize: 9, color: importGlb === t.glbUrl ? 'var(--green)' : '#999' }}>
                         {importGlb === t.glbUrl ? '✓ selected' : 'select GLB'}
                       </span>
                     </div>
@@ -347,7 +347,7 @@ function Leaderboard({ onClose, onLoadRecord, onImport }: {
           {!loading && records.length === 0 && (
             <div style={{
               padding: 40, textAlign: 'center',
-              fontFamily: 'var(--mono)', fontSize: 11, color: '#555',
+              fontFamily: 'var(--mono)', fontSize: 11, color: '#999',
             }}>
               No entries yet. Be the first.
             </div>
@@ -369,7 +369,7 @@ function Leaderboard({ onClose, onLoadRecord, onImport }: {
               >
                 <span style={{
                   fontFamily: 'var(--mono)', fontSize: 11,
-                  color: rank === 0 ? 'var(--green)' : '#555',
+                  color: rank === 0 ? 'var(--green)' : '#999',
                   width: 24, flexShrink: 0, textAlign: 'right',
                 }}>
                   {rank + 1}
@@ -382,7 +382,7 @@ function Leaderboard({ onClose, onLoadRecord, onImport }: {
                   <div style={{ fontFamily: 'var(--mono)', fontSize: 13, color: 'var(--green)' }}>
                     Cd {r.cd_score.toFixed(4)}
                   </div>
-                  <div style={{ fontFamily: 'var(--mono)', fontSize: 9, color: '#555', marginTop: 2 }}>
+                  <div style={{ fontFamily: 'var(--mono)', fontSize: 9, color: '#999', marginTop: 2 }}>
                     {new Date(r.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                     {' · click to load 3D model'}
                   </div>
@@ -408,10 +408,10 @@ function Leaderboard({ onClose, onLoadRecord, onImport }: {
               disabled={page === 1}
               style={{
                 background: 'none', border: 'none', cursor: page === 1 ? 'default' : 'pointer',
-                fontFamily: 'var(--mono)', fontSize: 10, color: page === 1 ? '#333' : '#777', padding: 0,
+                fontFamily: 'var(--mono)', fontSize: 10, color: '#999', padding: 0,
               }}
             >← prev</button>
-            <span style={{ fontFamily: 'var(--mono)', fontSize: 10, color: '#555' }}>
+            <span style={{ fontFamily: 'var(--mono)', fontSize: 10, color: '#999' }}>
               {page} / {Math.ceil(records.length / PAGE_SIZE)}
             </span>
             <button
@@ -421,7 +421,7 @@ function Leaderboard({ onClose, onLoadRecord, onImport }: {
                 background: 'none', border: 'none',
                 cursor: page === Math.ceil(records.length / PAGE_SIZE) ? 'default' : 'pointer',
                 fontFamily: 'var(--mono)', fontSize: 10,
-                color: page === Math.ceil(records.length / PAGE_SIZE) ? '#333' : '#777', padding: 0,
+                color: '#999', padding: 0,
               }}
             >next →</button>
           </div>
@@ -446,7 +446,7 @@ function GemmaThinking() {
   const str = Array.from({ length: 9 }, (_, i) => CHARS[(t + i) % 4]).join(' ')
   return (
     <div style={{ fontFamily: 'var(--mono)', fontSize: 13, color: 'var(--green)', letterSpacing: 2, display: 'flex', alignItems: 'center', gap: 14 }}>
-      <span style={{ color: '#555', fontSize: 11, letterSpacing: 0.5, flexShrink: 0 }}>
+      <span style={{ color: '#999', fontSize: 11, letterSpacing: 0.5, flexShrink: 0 }}>
         [{(elapsed / 1000).toFixed(1)}s]
       </span>
       {str}
@@ -463,7 +463,7 @@ function UploadPrompt({ onUpload }: { onUpload: () => void }) {
       onMouseLeave={() => setHover(false)}
       style={{
         display: 'block', width: '100%', textAlign: 'left',
-        border: `1px dashed ${hover ? 'var(--green)' : '#444'}`,
+        border: `1px dashed ${hover ? 'var(--green)' : '#999'}`,
         background: 'transparent', padding: '24px 20px',
         cursor: 'pointer', transition: 'border-color 0.15s',
       }}
@@ -1074,7 +1074,7 @@ export default function App() {
         flexShrink: 0,
         borderTop: '1px solid #1a1a1a',
         padding: '10px 24px',
-        fontFamily: 'var(--mono)', fontSize: 10, color: '#666',
+        fontFamily: 'var(--mono)', fontSize: 10, color: '#999',
         textAlign: 'center', lineHeight: 1.8,
         background: '#0a0a0a',
       }}>
