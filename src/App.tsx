@@ -138,7 +138,7 @@ function DataRow({ label, value, accent, dim, tooltip }: {
               style={{
                 background: 'none', border: 'none', cursor: 'pointer', padding: 0,
                 fontFamily: 'var(--mono)', fontSize: 12, lineHeight: 1,
-                color: open ? 'var(--green)' : '#3a3a3a',
+                color: open ? 'var(--green)' : '#999',
                 transition: 'color 0.1s',
               }}
             >↴</button>
@@ -385,7 +385,7 @@ function Leaderboard({ onClose, onLoadRecord, onImport, demo = false }: {
                   <div style={{ fontFamily: 'var(--mono)', fontSize: 13, color: 'var(--green)' }}>
                     Cd {r.cd_score.toFixed(4)}
                   </div>
-                  <div style={{ fontFamily: 'var(--mono)', fontSize: 9, color: '#555', marginTop: 2 }}>
+                  <div style={{ fontFamily: 'var(--mono)', fontSize: 9, color: '#999', marginTop: 2 }}>
                     {new Date(r.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                     {' · click to load 3D model'}
                   </div>
