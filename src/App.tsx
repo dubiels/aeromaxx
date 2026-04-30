@@ -510,6 +510,13 @@ export default function App() {
   const [gemmaOnDemand, setGemmaOnDemand]     = useState(false)
   const [gemmaThinking, setGemmaThinking]     = useState(false)
   const [demoGemmaShown, setDemoGemmaShown]   = useState(false)
+  const [isMobile, setIsMobile]               = useState(() => window.innerWidth < 768)
+
+  useEffect(() => {
+    const handler = () => setIsMobile(window.innerWidth < 768)
+    window.addEventListener('resize', handler)
+    return () => window.removeEventListener('resize', handler)
+  }, [])
 
   // Pipeline state refs — stable across renders, safe to read in async callbacks
   const poseDataRef          = useRef<{ measurements: BodyMeasurements; drag: DragResults } | null>(null)
@@ -703,6 +710,24 @@ export default function App() {
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const { measurements: m, drag: d, glbMeasurements: glb } = analysis
+
+  if (DEMO_MODE && isMobile) {
+    return (
+      <div style={{
+        position: 'fixed', inset: 0, background: '#000',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        padding: '0 32px', textAlign: 'center',
+      }}>
+        <div style={{
+          fontFamily: 'var(--mono)', fontSize: 13, color: '#ff69b4',
+          lineHeight: 1.8,
+        }}>
+          Demo mode is disabled on mobile :(<br />
+          Please navigate to <span style={{ textDecoration: 'underline' }}>aeromaxx.karolina.mgdubiel.com</span> on a desktop device!
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="app-shell">
