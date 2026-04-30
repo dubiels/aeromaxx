@@ -8,6 +8,8 @@ import { saveSubject, getLeaderboard, uploadGlb, type SubjectRecord } from './db
 import { listSucceededTasks, type MeshyListItem } from './meshy'
 import type { AnalysisState, GlbMeasurements, BodyMeasurements, DragResults } from './types'
 
+const DEMO_MODE = true
+
 const CLOUD_NAME    = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME as string
 const UPLOAD_PRESET = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET as string
 
@@ -161,10 +163,11 @@ function DataRow({ label, value, accent, dim, tooltip }: {
 }
 
 
-function Leaderboard({ onClose, onLoadRecord, onImport }: {
+function Leaderboard({ onClose, onLoadRecord, onImport, demo = false }: {
   onClose: () => void
   onLoadRecord: (r: SubjectRecord) => void
   onImport: (imageUrl: string, glbUrl: string) => void
+  demo?: boolean
 }) {
   const [records, setRecords] = useState<SubjectRecord[]>([])
   const [loading, setLoading] = useState(true)
@@ -231,7 +234,7 @@ function Leaderboard({ onClose, onLoadRecord, onImport }: {
         </div>
 
         {/* Import bar */}
-        <div style={{ borderBottom: '1px solid #1a1a1a', padding: '10px 20px', flexShrink: 0 }}>
+        {!demo && <div style={{ borderBottom: '1px solid #1a1a1a', padding: '10px 20px', flexShrink: 0 }}>
           {!showImport ? (
             <button
               onClick={() => setShowImport(true)}
@@ -331,7 +334,7 @@ function Leaderboard({ onClose, onLoadRecord, onImport }: {
               </div>
             </div>
           )}
-        </div>
+        </div>}
 
         {/* Body */}
         <div style={{ overflowY: 'auto', flex: 1 }}>
@@ -454,6 +457,19 @@ function GemmaThinking() {
   )
 }
 
+function DemoBanner() {
+  return (
+    <div style={{
+      background: '#1a0010', borderBottom: '1px solid #ff69b4',
+      padding: '8px 20px', textAlign: 'center',
+      fontFamily: 'var(--mono)', fontSize: 10, letterSpacing: 1,
+      color: '#ff69b4',
+    }}>
+      DEMO MODE — leaderboard is live, uploads and AI are disabled. Sorry, API credits are expensive :/
+    </div>
+  )
+}
+
 function UploadPrompt({ onUpload }: { onUpload: () => void }) {
   const [hover, setHover] = useState(false)
   return (
@@ -493,6 +509,7 @@ export default function App() {
   const [showLeaderboard, setShowLeaderboard] = useState(false)
   const [gemmaOnDemand, setGemmaOnDemand]     = useState(false)
   const [gemmaThinking, setGemmaThinking]     = useState(false)
+  const [demoGemmaShown, setDemoGemmaShown]   = useState(false)
 
   // Pipeline state refs — stable across renders, safe to read in async callbacks
   const poseDataRef          = useRef<{ measurements: BodyMeasurements; drag: DragResults } | null>(null)
@@ -572,6 +589,7 @@ export default function App() {
   }
 
   async function runMeshy(url: string) {
+    if (DEMO_MODE) return
     const key = import.meta.env.VITE_MESHY_API_KEY
     if (!key || key.startsWith('your_')) return
     setMeshyLoading(true)
@@ -609,6 +627,8 @@ export default function App() {
     const drag = pose ? calculateDrag(pose.measurements, glb) : null
     setAnalysis(s => ({ ...s, glbMeasurements: glb, ...(drag ? { drag } : {}) }))
     if (isUserModel) {
+      setMeshyLoading(false)
+      setMeshyMessage('')
       userModelRenderedRef.current = true
       tryRevealGemma()
       if (!skipNextSaveRef.current && drag && frontUrlRef.current && meshyUrlRef.current) {
@@ -626,6 +646,8 @@ export default function App() {
     // skipNextSaveRef stays false — this is a new entry, we want to persist it
     setFrontUrl(imageUrl)
     setMeshyModelUrl(glbUrl)
+    setMeshyLoading(true)
+    setMeshyMessage('Loading 3D model from database...')
     setAnalysis(INIT)
     poseDataRef.current          = null
     gemmaResultRef.current       = null
@@ -640,8 +662,11 @@ export default function App() {
     skipNextSaveRef.current      = true   // already in DB — don't re-insert
     gemmaOnDemandRef.current     = true
     setGemmaOnDemand(true)
+    setDemoGemmaShown(false)
     setFrontUrl(record.image_url)
     setMeshyModelUrl(record.glb_url)
+    setMeshyLoading(true)
+    setMeshyMessage('Loading 3D model from database...')
     setAnalysis(INIT)
     poseDataRef.current          = null
     gemmaResultRef.current       = null
@@ -664,9 +689,15 @@ export default function App() {
     gemmaResultRef.current       = null
     userModelRenderedRef.current = false
     gemmaRunningRef.current      = false
-    // If Meshy is disabled, no 3D model will ever render — reveal Gemma immediately on completion
-    const meshyKey = import.meta.env.VITE_MESHY_API_KEY as string
-    if (!meshyKey || meshyKey.startsWith('your_')) userModelRenderedRef.current = true
+    setDemoGemmaShown(false)
+    if (DEMO_MODE) {
+      gemmaOnDemandRef.current = true
+      setGemmaOnDemand(true)
+      userModelRenderedRef.current = true
+    } else {
+      const meshyKey = import.meta.env.VITE_MESHY_API_KEY as string
+      if (!meshyKey || meshyKey.startsWith('your_')) userModelRenderedRef.current = true
+    }
     void runPoseAnalysis(url)
     void runMeshy(url)
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
@@ -675,6 +706,8 @@ export default function App() {
 
   return (
     <div className="app-shell">
+
+      {DEMO_MODE && <DemoBanner />}
 
       {/* ── Header ── */}
 
@@ -708,6 +741,7 @@ export default function App() {
         onClose={() => setShowLeaderboard(false)}
         onLoadRecord={handleLeaderboardLoad}
         onImport={handleManualImport}
+        demo={DEMO_MODE}
       />
     )}
 
@@ -733,7 +767,23 @@ export default function App() {
           <div className="panel-section">
             <SectionLabel n="1">SUBJECT INPUT</SectionLabel>
             {!frontUrl ? (
-              <UploadPrompt onUpload={() => openWidget(handleUpload)} />
+              DEMO_MODE ? (
+                <div style={{
+                  border: '1px dashed #2a2a2a', padding: '24px 20px',
+                  fontFamily: 'var(--mono)', fontSize: 11,
+                }}>
+                  <div style={{ color: '#ff69b4', letterSpacing: 1, marginBottom: 10 }}>
+                    UPLOAD DISABLED IN DEMO MODE
+                  </div>
+                  <div style={{ color: '#999', fontSize: 10, lineHeight: 1.7 }}>
+                    In the full version, you'd upload a photo here and get a
+                    live 3D model + aerodynamic analysis.<br />
+                    Click <span style={{ color: '#ff69b4' }}>LEADERBOARD</span> in the header to browse existing entries.
+                  </div>
+                </div>
+              ) : (
+                <UploadPrompt onUpload={() => openWidget(handleUpload)} />
+              )
             ) : (
               <div>
                 {/* Raw input + annotated pose scan side by side */}
@@ -811,13 +861,15 @@ export default function App() {
                   </div>
                 )}
 
-                <button
-                  className="btn-secondary"
-                  onClick={() => openWidget(handleUpload)}
-                  style={{ marginTop: 12, width: '100%' }}
-                >
-                  New subject
-                </button>
+                {!DEMO_MODE && (
+                  <button
+                    className="btn-secondary"
+                    onClick={() => openWidget(handleUpload)}
+                    style={{ marginTop: 12, width: '100%' }}
+                  >
+                    New subject
+                  </button>
+                )}
               </div>
             )}
           </div>
@@ -1035,10 +1087,21 @@ export default function App() {
           )}
 
           {/* 03 Drag reduction protocol */}
-          {(analysis.recommendations || (d && m && (gemmaOnDemand || gemmaThinking))) && (
+          {(analysis.recommendations || demoGemmaShown || (d && m && (gemmaOnDemand || gemmaThinking))) && (
             <div className="panel-section">
               <SectionLabel n="3">DRAG REDUCTION PROTOCOL</SectionLabel>
-              {analysis.recommendations ? (
+              {demoGemmaShown ? (
+                <div style={{
+                  fontFamily: 'var(--mono)', fontSize: 11, color: '#ff69b4',
+                  border: '1px solid #3a0020', background: '#0f0008',
+                  padding: '12px 14px', lineHeight: 1.8,
+                }}>
+                  Gemma is disabled in demo mode. In the full version, she analyses
+                  your posture data and generates a personalised drag reduction
+                  protocol — specific exercises, clothing adjustments, and posture
+                  corrections ranked by projected Cd improvement.
+                </div>
+              ) : analysis.recommendations ? (
                 <div style={{
                   fontFamily: 'var(--sans)', fontSize: 13, color: '#ccc',
                   lineHeight: 1.8, whiteSpace: 'pre-wrap',
@@ -1052,10 +1115,15 @@ export default function App() {
                   className="btn-secondary"
                   style={{ width: '100%' }}
                   onClick={() => {
-                    gemmaOnDemandRef.current = false
                     setGemmaOnDemand(false)
+                    gemmaOnDemandRef.current = false
                     setGemmaThinking(true)
-                    if (poseDataRef.current) {
+                    if (DEMO_MODE) {
+                      setTimeout(() => {
+                        setGemmaThinking(false)
+                        setDemoGemmaShown(true)
+                      }, 1500)
+                    } else if (poseDataRef.current) {
                       void runGemma(poseDataRef.current.measurements, poseDataRef.current.drag)
                     }
                   }}
