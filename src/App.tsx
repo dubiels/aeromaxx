@@ -1142,7 +1142,7 @@ export default function App() {
         flexShrink: 0,
         borderTop: '1px solid #1a1a1a',
         padding: '10px 24px',
-        fontFamily: 'var(--mono)', fontSize: 10, color: '#666',
+        fontFamily: 'var(--mono)', fontSize: 10, color: '#999',
         textAlign: 'center', lineHeight: 1.8,
         background: '#0a0a0a',
       }}>
